@@ -1,0 +1,218 @@
+syntax = "proto3";
+
+package billing.v1;
+
+option go_package = "github.com/yourusername/distributed-file-sharing-platform/proto/billing/v1;billingv1";
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+
+// BillingService handles subscription plans, billing, and storage quota management
+service BillingService {
+  // Plan Management
+  rpc ListPlans(ListPlansRequest) returns (ListPlansResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/billing/plans"
+    };
+  }
+
+  rpc GetPlan(GetPlanRequest) returns (GetPlanResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/billing/plans/{plan_id}"
+    };
+  }
+
+  // Subscription Management
+  rpc GetUserSubscription(GetUserSubscriptionRequest) returns (GetUserSubscriptionResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/billing/subscription"
+    };
+  }
+
+  rpc CreateSubscription(CreateSubscriptionRequest) returns (CreateSubscriptionResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/billing/subscribe"
+      body: "*"
+    };
+  }
+
+  rpc CancelSubscription(CancelSubscriptionRequest) returns (CancelSubscriptionResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/billing/subscription/cancel"
+      body: "*"
+    };
+  }
+
+  // Usage and Quota
+  rpc GetUsage(GetUsageRequest) returns (GetUsageResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/billing/usage"
+    };
+  }
+
+  rpc CheckQuota(CheckQuotaRequest) returns (CheckQuotaResponse) {}
+
+  rpc UpdateUsage(UpdateUsageRequest) returns (UpdateUsageResponse) {}
+
+  // Payment Webhook
+  rpc HandlePaymentWebhook(PaymentWebhookRequest) returns (PaymentWebhookResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/billing/webhook"
+      body: "*"
+    };
+  }
+}
+
+// Plan Messages
+message Plan {
+  string id = 1;
+  string name = 2;
+  int64 quota_bytes = 3;
+  double price_per_month = 4;
+  string description = 5;
+  repeated string features = 6;
+  bool is_popular = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+}
+
+message ListPlansRequest {}
+
+message ListPlansResponse {
+  repeated Plan plans = 1;
+}
+
+message GetPlanRequest {
+  string plan_id = 1;
+}
+
+message GetPlanResponse {
+  Plan plan = 1;
+}
+
+// Subscription Messages
+enum SubscriptionStatus {
+  SUBSCRIPTION_STATUS_UNSPECIFIED = 0;
+  SUBSCRIPTION_STATUS_ACTIVE = 1;
+  SUBSCRIPTION_STATUS_EXPIRED = 2;
+  SUBSCRIPTION_STATUS_CANCELLED = 3;
+  SUBSCRIPTION_STATUS_PENDING = 4;
+}
+
+enum PaymentStatus {
+  PAYMENT_STATUS_UNSPECIFIED = 0;
+  PAYMENT_STATUS_PENDING = 1;
+  PAYMENT_STATUS_PAID = 2;
+  PAYMENT_STATUS_FAILED = 3;
+  PAYMENT_STATUS_REFUNDED = 4;
+}
+
+message Subscription {
+  string id = 1;
+  string user_id = 2;
+  string plan_id = 3;
+  Plan plan = 4;
+  SubscriptionStatus status = 5;
+  PaymentStatus payment_status = 6;
+  google.protobuf.Timestamp start_date = 7;
+  google.protobuf.Timestamp end_date = 8;
+  string transaction_id = 9;
+  string payment_method = 10;
+  google.protobuf.Timestamp created_at = 11;
+  google.protobuf.Timestamp updated_at = 12;
+}
+
+message GetUserSubscriptionRequest {
+  string user_id = 1;
+}
+
+message GetUserSubscriptionResponse {
+  Subscription subscription = 1;
+  bool has_active_subscription = 2;
+}
+
+message CreateSubscriptionRequest {
+  string user_id = 1;
+  string plan_id = 2;
+  string payment_method = 3; // "stripe" or "razorpay"
+}
+
+message CreateSubscriptionResponse {
+  Subscription subscription = 1;
+  string payment_url = 2;
+  string client_secret = 3;
+  string session_id = 4;
+}
+
+message CancelSubscriptionRequest {
+  string user_id = 1;
+  string subscription_id = 2;
+}
+
+message CancelSubscriptionResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// Usage Messages
+message Usage {
+  string user_id = 1;
+  string plan_name = 2;
+  int64 quota_bytes = 3;
+  int64 used_bytes = 4;
+  double quota_gb = 5;
+  double used_gb = 6;
+  double percent_used = 7;
+  bool upgrade_available = 8;
+  bool quota_exceeded = 9;
+}
+
+message GetUsageRequest {
+  string user_id = 1;
+}
+
+message GetUsageResponse {
+  Usage usage = 1;
+}
+
+message CheckQuotaRequest {
+  string user_id = 1;
+  int64 file_size_bytes = 2;
+}
+
+message CheckQuotaResponse {
+  bool allowed = 1;
+  string message = 2;
+  int64 available_bytes = 3;
+  int64 quota_bytes = 4;
+  int64 used_bytes = 5;
+}
+
+message UpdateUsageRequest {
+  string user_id = 1;
+  int64 bytes_delta = 2; // positive for upload, negative for delete
+  string operation = 3; // "upload" or "delete"
+}
+
+message UpdateUsageResponse {
+  bool success = 1;
+  int64 new_used_bytes = 2;
+}
+
+// Payment Webhook Messages
+message PaymentWebhookRequest {
+  string provider = 1; // "stripe" or "razorpay"
+  string event_type = 2;
+  string session_id = 3;
+  string transaction_id = 4;
+  string user_id = 5;
+  string subscription_id = 6;
+  PaymentStatus payment_status = 7;
+  bytes raw_payload = 8;
+}
+
+message PaymentWebhookResponse {
+  bool success = 1;
+  string message = 2;
+}
+

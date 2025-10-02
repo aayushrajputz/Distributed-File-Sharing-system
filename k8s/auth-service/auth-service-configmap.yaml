@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: auth-service-config
+  namespace: file-sharing
+data:
+  AUTH_SERVICE_PORT: "8081"
+  AUTH_GRPC_PORT: "50051"
+  AUTH_SERVICE_HOST: "0.0.0.0"
+  MONGO_URI: "mongodb://mongodb:27017"
+  MONGO_DATABASE: "file_sharing"
+  JWT_EXPIRY: "3600"
+  JWT_REFRESH_EXPIRY: "604800"
+  ENVIRONMENT: "production"
+  LOG_LEVEL: "info"
+

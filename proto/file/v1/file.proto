@@ -1,0 +1,333 @@
+syntax = "proto3";
+
+package file.v1;
+
+option go_package = "github.com/yourusername/distributed-file-sharing/proto/file/v1;filev1";
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+
+// FileService handles file operations
+service FileService {
+  // UploadFile initiates a file upload and returns upload URL
+  rpc UploadFile(UploadFileRequest) returns (UploadFileResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/files/upload"
+      body: "*"
+    };
+  }
+
+  // CompleteUpload marks the upload as complete
+  rpc CompleteUpload(CompleteUploadRequest) returns (CompleteUploadResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/files/{file_id}/complete"
+      body: "*"
+    };
+  }
+
+  // GetFile retrieves file metadata
+  rpc GetFile(GetFileRequest) returns (GetFileResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/files/{file_id}"
+    };
+  }
+
+  // ListFiles lists user's files with pagination
+  rpc ListFiles(ListFilesRequest) returns (ListFilesResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/files"
+    };
+  }
+
+  // GetDownloadURL generates a pre-signed download URL
+  rpc GetDownloadURL(GetDownloadURLRequest) returns (GetDownloadURLResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/files/{file_id}/download"
+    };
+  }
+
+  // DeleteFile deletes a file
+  rpc DeleteFile(DeleteFileRequest) returns (DeleteFileResponse) {
+    option (google.api.http) = {
+      delete: "/api/v1/files/{file_id}"
+    };
+  }
+
+  // ShareFile shares a file with other users
+  rpc ShareFile(ShareFileRequest) returns (ShareFileResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/files/{file_id}/share"
+      body: "*"
+    };
+  }
+
+  // UnshareFile removes file sharing
+  rpc UnshareFile(UnshareFileRequest) returns (UnshareFileResponse) {
+    option (google.api.http) = {
+      delete: "/api/v1/files/{file_id}/share/{share_id}"
+    };
+  }
+
+  // ListSharedFiles lists files shared with the user
+  rpc ListSharedFiles(ListSharedFilesRequest) returns (ListSharedFilesResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/files/shared"
+    };
+  }
+
+  // UpdateFile updates file metadata
+  rpc UpdateFile(UpdateFileRequest) returns (UpdateFileResponse) {
+    option (google.api.http) = {
+      put: "/api/v1/files/{file_id}"
+      body: "*"
+    };
+  }
+
+  // GetStorageUsage gets user's storage usage statistics
+  rpc GetStorageUsage(GetStorageUsageRequest) returns (GetStorageUsageResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/storage/usage"
+    };
+  }
+
+  // AddToFavorites adds a file to user's favorites
+  rpc AddToFavorites(FavoriteRequest) returns (FavoriteResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/files/{file_id}/favorite"
+      body: "*"
+    };
+  }
+
+  // RemoveFromFavorites removes a file from user's favorites
+  rpc RemoveFromFavorites(FavoriteRequest) returns (FavoriteResponse) {
+    option (google.api.http) = {
+      delete: "/api/v1/files/{file_id}/favorite"
+    };
+  }
+
+  // ListFavorites lists user's favorite files
+  rpc ListFavorites(ListFavoritesRequest) returns (ListFilesResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/files/favorites"
+    };
+  }
+}
+
+// File represents a file in the system
+message File {
+  string file_id = 1;
+  string name = 2;
+  string description = 3;
+  int64 size = 4;
+  string mime_type = 5;
+  string owner_id = 6;
+  string storage_path = 7;
+  string checksum = 8;
+  FileStatus status = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+}
+
+// FileStatus represents the status of a file
+enum FileStatus {
+  FILE_STATUS_UNSPECIFIED = 0;
+  FILE_STATUS_UPLOADING = 1;
+  FILE_STATUS_AVAILABLE = 2;
+  FILE_STATUS_PROCESSING = 3;
+  FILE_STATUS_ERROR = 4;
+  FILE_STATUS_DELETED = 5;
+}
+
+// FileShare represents a file sharing relationship
+message FileShare {
+  string share_id = 1;
+  string file_id = 2;
+  string owner_id = 3;
+  string shared_with_id = 4;
+  string shared_with_email = 5;
+  Permission permission = 6;
+  google.protobuf.Timestamp expiry_time = 7;
+  string share_link = 8;
+  bool is_active = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+}
+
+// Permission defines access levels
+enum Permission {
+  PERMISSION_UNSPECIFIED = 0;
+  PERMISSION_READ = 1;
+  PERMISSION_WRITE = 2;
+  PERMISSION_ADMIN = 3;
+}
+
+// UploadFileRequest initiates a file upload
+message UploadFileRequest {
+  string name = 1;
+  string description = 2;
+  int64 size = 3;
+  string mime_type = 4;
+  string user_id = 5;
+}
+
+// UploadFileResponse contains upload information
+message UploadFileResponse {
+  string file_id = 1;
+  string upload_url = 2;
+  string message = 3;
+}
+
+// CompleteUploadRequest marks upload as complete
+message CompleteUploadRequest {
+  string file_id = 1;
+  string user_id = 2;
+  string checksum = 3;
+}
+
+// CompleteUploadResponse confirms completion
+message CompleteUploadResponse {
+  File file = 1;
+  string message = 2;
+}
+
+// GetFileRequest contains file ID
+message GetFileRequest {
+  string file_id = 1;
+  string user_id = 2;
+}
+
+// GetFileResponse contains file metadata
+message GetFileResponse {
+  File file = 1;
+}
+
+// ListFilesRequest contains pagination parameters
+message ListFilesRequest {
+  string user_id = 1;
+  int32 page = 2;
+  int32 limit = 3;
+  string sort = 4;
+}
+
+// ListFilesResponse contains paginated files
+message ListFilesResponse {
+  repeated File files = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 limit = 4;
+}
+
+// GetDownloadURLRequest requests download URL
+message GetDownloadURLRequest {
+  string file_id = 1;
+  string user_id = 2;
+}
+
+// GetDownloadURLResponse contains download URL
+message GetDownloadURLResponse {
+  string download_url = 1;
+  int64 expires_in = 2;
+}
+
+// DeleteFileRequest contains file ID
+message DeleteFileRequest {
+  string file_id = 1;
+  string user_id = 2;
+}
+
+// DeleteFileResponse confirms deletion
+message DeleteFileResponse {
+  string message = 1;
+}
+
+// ShareFileRequest shares a file
+message ShareFileRequest {
+  string file_id = 1;
+  string user_id = 2;
+  repeated string shared_with_emails = 3;
+  Permission permission = 4;
+  string expiry_time = 5;
+}
+
+// ShareFileResponse contains sharing information
+message ShareFileResponse {
+  repeated FileShare shares = 1;
+  string share_link = 2;
+  string message = 3;
+}
+
+// UnshareFileRequest removes sharing
+message UnshareFileRequest {
+  string file_id = 1;
+  string share_id = 2;
+  string user_id = 3;
+}
+
+// UnshareFileResponse confirms unsharing
+message UnshareFileResponse {
+  string message = 1;
+}
+
+// ListSharedFilesRequest lists shared files
+message ListSharedFilesRequest {
+  string user_id = 1;
+  int32 page = 2;
+  int32 limit = 3;
+}
+
+// ListSharedFilesResponse contains shared files
+message ListSharedFilesResponse {
+  repeated File files = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 limit = 4;
+}
+
+// UpdateFileRequest updates file metadata
+message UpdateFileRequest {
+  string file_id = 1;
+  string user_id = 2;
+  string name = 3;
+  string description = 4;
+}
+
+// UpdateFileResponse contains updated file
+message UpdateFileResponse {
+  File file = 1;
+  string message = 2;
+}
+
+// GetStorageUsageRequest requests storage usage
+message GetStorageUsageRequest {
+  string user_id = 1;
+}
+
+// GetStorageUsageResponse contains storage usage statistics
+message GetStorageUsageResponse {
+  int64 used_bytes = 1;
+  int64 quota_bytes = 2;
+  int64 file_count = 3;
+  double used_gb = 4;
+  double quota_gb = 5;
+  double usage_percentage = 6;
+}
+
+// FavoriteRequest for adding/removing favorites
+message FavoriteRequest {
+  string file_id = 1;
+  string user_id = 2;
+}
+
+// FavoriteResponse confirms favorite operation
+message FavoriteResponse {
+  string message = 1;
+  bool is_favorite = 2;
+}
+
+// ListFavoritesRequest for listing favorites
+message ListFavoritesRequest {
+  string user_id = 1;
+  int32 page = 2;
+  int32 limit = 3;
+}
+

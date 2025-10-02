@@ -1,0 +1,159 @@
+syntax = "proto3";
+
+package notification.v1;
+
+option go_package = "github.com/yourusername/distributed-file-sharing/proto/notification/v1;notificationv1";
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+
+// NotificationService handles user notifications
+service NotificationService {
+  // GetNotifications retrieves user notifications
+  rpc GetNotifications(GetNotificationsRequest) returns (GetNotificationsResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/notifications"
+    };
+  }
+
+  // MarkAsRead marks a notification as read
+  rpc MarkAsRead(MarkAsReadRequest) returns (MarkAsReadResponse) {
+    option (google.api.http) = {
+      put: "/api/v1/notifications/{notification_id}/read"
+      body: "*"
+    };
+  }
+
+  // MarkAllAsRead marks all notifications as read
+  rpc MarkAllAsRead(MarkAllAsReadRequest) returns (MarkAllAsReadResponse) {
+    option (google.api.http) = {
+      put: "/api/v1/notifications/read-all"
+      body: "*"
+    };
+  }
+
+  // DeleteNotification deletes a notification
+  rpc DeleteNotification(DeleteNotificationRequest) returns (DeleteNotificationResponse) {
+    option (google.api.http) = {
+      delete: "/api/v1/notifications/{notification_id}"
+    };
+  }
+
+  // GetUnreadCount gets count of unread notifications
+  rpc GetUnreadCount(GetUnreadCountRequest) returns (GetUnreadCountResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/notifications/unread-count"
+    };
+  }
+
+  // SendNotification sends a notification (internal gRPC only)
+  rpc SendNotification(SendNotificationRequest) returns (SendNotificationResponse);
+
+  // SubscribeStream subscribes to real-time notification stream (server-side streaming)
+  rpc SubscribeStream(SubscribeStreamRequest) returns (stream Notification);
+}
+
+// Notification represents a user notification
+message Notification {
+  string notification_id = 1;
+  string user_id = 2;
+  NotificationType type = 3;
+  string title = 4;
+  string body = 5; // Changed from message to body
+  string link = 6;
+  bool is_read = 7; // Changed from read to is_read
+  map<string, string> metadata = 8;
+  google.protobuf.Timestamp created_at = 9;
+}
+
+// NotificationType defines types of notifications
+enum NotificationType {
+  NOTIFICATION_TYPE_UNSPECIFIED = 0;
+  NOTIFICATION_TYPE_FILE_UPLOADED = 1;
+  NOTIFICATION_TYPE_FILE_SHARED = 2;
+  NOTIFICATION_TYPE_FILE_DELETED = 3;
+  NOTIFICATION_TYPE_SHARE_REVOKED = 4;
+  NOTIFICATION_TYPE_SYSTEM = 5;
+}
+
+// GetNotificationsRequest contains query parameters
+message GetNotificationsRequest {
+  string user_id = 1;
+  int32 page = 2;
+  int32 limit = 3;
+  bool unread_only = 4;
+}
+
+// GetNotificationsResponse contains paginated notifications
+message GetNotificationsResponse {
+  repeated Notification notifications = 1;
+  int64 total = 2;
+  int64 unread_count = 3;
+  int32 page = 4;
+  int32 limit = 5;
+}
+
+// MarkAsReadRequest marks notification as read
+message MarkAsReadRequest {
+  string notification_id = 1;
+  string user_id = 2;
+}
+
+// MarkAsReadResponse confirms marking as read
+message MarkAsReadResponse {
+  string message = 1;
+}
+
+// MarkAllAsReadRequest marks all notifications as read
+message MarkAllAsReadRequest {
+  string user_id = 1;
+}
+
+// MarkAllAsReadResponse confirms marking all as read
+message MarkAllAsReadResponse {
+  string message = 1;
+  int64 count = 2;
+}
+
+// DeleteNotificationRequest deletes a notification
+message DeleteNotificationRequest {
+  string notification_id = 1;
+  string user_id = 2;
+}
+
+// DeleteNotificationResponse confirms deletion
+message DeleteNotificationResponse {
+  string message = 1;
+}
+
+// GetUnreadCountRequest gets unread count
+message GetUnreadCountRequest {
+  string user_id = 1;
+}
+
+// GetUnreadCountResponse contains unread count
+message GetUnreadCountResponse {
+  int64 count = 1;
+}
+
+// SendNotificationRequest sends a notification
+message SendNotificationRequest {
+  string user_id = 1;
+  NotificationType type = 2;
+  string title = 3;
+  string body = 4; // Changed from message to body
+  string link = 5;
+  map<string, string> metadata = 6;
+}
+
+// SendNotificationResponse confirms sending
+message SendNotificationResponse {
+  string notification_id = 1;
+  string message = 2;
+}
+
+// SubscribeStreamRequest subscribes to notification stream
+message SubscribeStreamRequest {
+  string user_id = 1;
+}
+

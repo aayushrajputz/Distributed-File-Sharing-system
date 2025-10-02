@@ -1,0 +1,299 @@
+version: '3.8'
+
+services:
+  # MongoDB
+  mongodb:
+    image: mongo:7.0
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: file_sharing
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - app-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/file_sharing --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Zookeeper
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
+    networks:
+      - app-network
+
+  # Kafka
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    ports:
+      - "9092:9092"
+      - "9094:9094"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    depends_on:
+      - zookeeper
+    networks:
+      - app-network
+    healthcheck:
+      test: kafka-broker-api-versions --bootstrap-server localhost:9092
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis (Caching)
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MinIO (S3-compatible object storage)
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Auth Service
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: auth-service
+    ports:
+      - "8081:8081"
+      - "50051:50051"
+    environment:
+      AUTH_SERVICE_PORT: 8081
+      AUTH_GRPC_PORT: 50051
+      AUTH_SERVICE_HOST: 0.0.0.0
+      MONGO_URI: mongodb://mongodb:27017
+      MONGO_DATABASE: file_sharing
+      JWT_SECRET: your-super-secret-key-change-in-production
+      JWT_EXPIRY: 3600
+      JWT_REFRESH_EXPIRY: 604800
+      ENVIRONMENT: development
+      LOG_LEVEL: debug
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # File Service
+  file-service:
+    build:
+      context: ./services/file-service
+      dockerfile: Dockerfile
+    container_name: file-service
+    ports:
+      - "8082:8082"
+      - "50052:50052"
+    environment:
+      FILE_SERVICE_PORT: 8082
+      FILE_GRPC_PORT: 50052
+      FILE_SERVICE_HOST: 0.0.0.0
+      MONGO_URI: mongodb://mongodb:27017
+      MONGO_DATABASE: file_sharing
+      STORAGE_TYPE: minio
+      MINIO_ENDPOINT: minio:9000
+      MINIO_EXTERNAL_ENDPOINT: localhost:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET: file-sharing
+      MINIO_USE_SSL: false
+      KAFKA_BROKERS: kafka:9092
+      AUTH_SERVICE_GRPC: auth-service:50051
+      BILLING_SERVICE_GRPC: billing-service:50054
+      REDIS_ENABLED: true
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ""
+      REDIS_DB: 0
+      ENVIRONMENT: development
+      LOG_LEVEL: debug
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # Notification Service
+  notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+    container_name: notification-service
+    ports:
+      - "8083:8083"
+      - "50053:50053"
+    environment:
+      NOTIFICATION_SERVICE_PORT: 8083
+      NOTIFICATION_GRPC_PORT: 50053
+      NOTIFICATION_SERVICE_HOST: 0.0.0.0
+      MONGO_URI: mongodb://mongodb:27017
+      MONGO_DATABASE: file_sharing
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_GROUP_ID: notification-service
+      AUTH_SERVICE_GRPC: auth-service:50051
+      ENVIRONMENT: development
+      LOG_LEVEL: debug
+    depends_on:
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # Billing Service
+  billing-service:
+    build:
+      context: ./services/billing-service
+      dockerfile: Dockerfile
+    container_name: billing-service
+    ports:
+      - "8084:8084"
+      - "50054:50054"
+    environment:
+      BILLING_SERVICE_PORT: 8084
+      BILLING_GRPC_PORT: 50054
+      BILLING_SERVICE_HOST: 0.0.0.0
+      MONGO_URI: mongodb://mongodb:27017
+      MONGO_DATABASE: file_sharing
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-sk_test_your_secret_key_here}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-pk_test_your_publishable_key_here}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_your_webhook_secret_here}
+      FILE_SERVICE_GRPC: file-service:50052
+      ENVIRONMENT: development
+      LOG_LEVEL: debug
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      file-service:
+        condition: service_started
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      GATEWAY_PORT: 8080
+      ENVIRONMENT: production
+      LOG_LEVEL: debug
+      JWT_SECRET: your-super-secret-key-change-in-production
+      AUTH_SERVICE_GRPC: auth-service:50051
+      FILE_SERVICE_GRPC: file-service:50052
+      NOTIFICATION_SERVICE_GRPC: notification-service:50053
+      BILLING_SERVICE_GRPC: billing-service:50054
+      CORS_ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:8080
+      RATE_LIMIT_ENABLED: true
+      RATE_LIMIT_REQUESTS: 100
+      RATE_LIMIT_DURATION: 60
+    depends_on:
+      - auth-service
+      - file-service
+      - notification-service
+      - billing-service
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # Frontend (Next.js)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8080/api
+      NEXT_PUBLIC_AUTH_SERVICE_URL: http://localhost:8081/api/v1
+      NEXT_PUBLIC_FILE_SERVICE_URL: http://localhost:8082/api/v1
+      NEXT_PUBLIC_NOTIFICATION_SERVICE_URL: http://localhost:8083/api/v1
+    depends_on:
+      - auth-service
+      - file-service
+      - notification-service
+    networks:
+      - app-network
+    restart: unless-stopped
+
+volumes:
+  mongodb_data:
+  zookeeper_data:
+  zookeeper_log:
+  kafka_data:
+  redis_data:
+  minio_data:
+
+networks:
+  app-network:
+    driver: bridge

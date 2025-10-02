@@ -1,0 +1,163 @@
+syntax = "proto3";
+
+package auth.v1;
+
+option go_package = "github.com/yourusername/distributed-file-sharing/proto/auth/v1;authv1";
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+
+// AuthService handles user authentication and authorization
+service AuthService {
+  // Register a new user
+  rpc Register(RegisterRequest) returns (RegisterResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/auth/register"
+      body: "*"
+    };
+  }
+
+  // Login authenticates a user and returns JWT tokens
+  rpc Login(LoginRequest) returns (LoginResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/auth/login"
+      body: "*"
+    };
+  }
+
+  // ValidateToken validates a JWT token
+  rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/auth/validate"
+      body: "*"
+    };
+  }
+
+  // GetUser retrieves user information by ID
+  rpc GetUser(GetUserRequest) returns (GetUserResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/auth/user/{user_id}"
+    };
+  }
+
+  // RefreshToken generates a new access token using refresh token
+  rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/auth/refresh"
+      body: "*"
+    };
+  }
+
+  // UpdateProfile updates user profile information
+  rpc UpdateProfile(UpdateProfileRequest) returns (UpdateProfileResponse) {
+    option (google.api.http) = {
+      put: "/api/v1/auth/profile"
+      body: "*"
+    };
+  }
+
+  // ChangePassword changes user password
+  rpc ChangePassword(ChangePasswordRequest) returns (ChangePasswordResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/auth/change-password"
+      body: "*"
+    };
+  }
+}
+
+// User represents a user in the system
+message User {
+  string user_id = 1;
+  string email = 2;
+  string full_name = 3;
+  string avatar_url = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+// RegisterRequest contains user registration data
+message RegisterRequest {
+  string email = 1;
+  string password = 2;
+  string full_name = 3;
+}
+
+// RegisterResponse contains the newly created user
+message RegisterResponse {
+  User user = 1;
+  string message = 2;
+}
+
+// LoginRequest contains login credentials
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+
+// LoginResponse contains JWT tokens and user info
+message LoginResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+  int64 expires_in = 3;
+  User user = 4;
+}
+
+// ValidateTokenRequest contains the token to validate
+message ValidateTokenRequest {
+  string token = 1;
+}
+
+// ValidateTokenResponse contains validation result
+message ValidateTokenResponse {
+  bool valid = 1;
+  string user_id = 2;
+  string email = 3;
+  string message = 4;
+}
+
+// GetUserRequest contains user ID
+message GetUserRequest {
+  string user_id = 1;
+}
+
+// GetUserResponse contains user information
+message GetUserResponse {
+  User user = 1;
+}
+
+// RefreshTokenRequest contains refresh token
+message RefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+// RefreshTokenResponse contains new access token
+message RefreshTokenResponse {
+  string access_token = 1;
+  int64 expires_in = 2;
+}
+
+// UpdateProfileRequest contains profile update data
+message UpdateProfileRequest {
+  string user_id = 1;
+  string full_name = 2;
+  string avatar_url = 3;
+}
+
+// UpdateProfileResponse contains updated user
+message UpdateProfileResponse {
+  User user = 1;
+  string message = 2;
+}
+
+// ChangePasswordRequest contains password change data
+message ChangePasswordRequest {
+  string user_id = 1;
+  string current_password = 2;
+  string new_password = 3;
+}
+
+// ChangePasswordResponse contains change result
+message ChangePasswordResponse {
+  string message = 1;
+}
+

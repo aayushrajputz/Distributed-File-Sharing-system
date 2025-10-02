@@ -1,0 +1,40 @@
+# Environment variables - NEVER COMMIT
+.env
+.env.local
+.env.production
+
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+file-service
+
+# Test binary
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Dependency directories
+vendor/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
+
