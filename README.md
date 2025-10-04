@@ -48,6 +48,7 @@ graph TB
     
     subgraph "Data Layer"
         Mongo[(MongoDB)]
+        Cassandra[(Cassandra)]
         Storage[MinIO/S3<br/>Object Storage]
         Redis[(Redis Cache)]
     end
@@ -69,6 +70,7 @@ graph TB
     
     Auth --> Mongo
     File --> Mongo
+    File --> Cassandra
     File --> Storage
     File --> Redis
     Billing --> Mongo
@@ -82,6 +84,7 @@ graph TB
     style Notif fill:#00add8
     style Billing fill:#00add8
     style Mongo fill:#47a248
+    style Cassandra fill:#1287b1
     style Redis fill:#dc382d
     style Kafka fill:#231f20
 ```
@@ -105,6 +108,7 @@ graph TB
 
 ### Data & Messaging
 - **MongoDB** - Document database for metadata
+- **Cassandra** - NoSQL database for file metadata and analytics
 - **MinIO** - S3-compatible object storage
 - **Redis** - In-memory data store for caching
 - **Kafka + Zookeeper** - Event streaming platform
@@ -175,6 +179,7 @@ docker-compose logs -f
 
 **Databases**: 
 - MongoDB (`files` collection)
+- Cassandra (file metadata and analytics)
 - MinIO (object storage)
 - Redis (caching)
 
@@ -316,6 +321,8 @@ FILE_SERVICE_PORT=8082
 FILE_GRPC_PORT=50052
 MONGO_URI=mongodb://mongodb:27017
 MONGO_DATABASE=file_sharing
+CASSANDRA_HOSTS=cassandra:9042
+CASSANDRA_KEYSPACE=file_sharing
 STORAGE_TYPE=minio
 MINIO_ENDPOINT=minio:9000
 MINIO_ACCESS_KEY=minioadmin
@@ -367,6 +374,7 @@ kubectl apply -f k8s/namespace.yaml
 
 # Deploy infrastructure
 kubectl apply -f k8s/mongodb/
+kubectl apply -f k8s/cassandra/
 kubectl apply -f k8s/kafka/
 kubectl apply -f k8s/minio/
 kubectl apply -f k8s/redis/
@@ -411,7 +419,7 @@ go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@lat
 
 3. **Start Infrastructure**
 ```bash
-docker-compose up -d mongodb kafka zookeeper minio redis
+docker-compose up -d mongodb cassandra kafka zookeeper minio redis
 ```
 
 4. **Run Services Locally**
@@ -526,9 +534,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [Next.js](https://nextjs.org/) - The React framework
 - [Docker](https://www.docker.com/) - Containerization platform
 - [MongoDB](https://www.mongodb.com/) - Database
+- [Apache Cassandra](https://cassandra.apache.org/) - NoSQL database
 - [MinIO](https://min.io/) - Object storage
 - [Apache Kafka](https://kafka.apache.org/) - Event streaming platform
-
----
-
-**Made with ❤️ by the development team**

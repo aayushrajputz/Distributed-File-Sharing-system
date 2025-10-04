@@ -58,6 +58,108 @@ func NewProducer(brokers []string, topic string, maxRetries int, logger *logrus.
 	}
 }
 
+// PublishFileUploadedEvent publishes a file upload event
+func (p *Producer) PublishFileUploadedEvent(ctx context.Context, event *FileUploadedEvent) error {
+	return p.publishEvent(ctx, "file.uploaded", event.FileID, event)
+}
+
+// PublishFileDeletedEvent publishes a file deletion event
+func (p *Producer) PublishFileDeletedEvent(ctx context.Context, event *FileDeletedEvent) error {
+	return p.publishEvent(ctx, "file.deleted", event.FileID, event)
+}
+
+// PublishFileDownloadedEvent publishes a file download event
+func (p *Producer) PublishFileDownloadedEvent(ctx context.Context, event *FileDownloadedEvent) error {
+	return p.publishEvent(ctx, "file.downloaded", event.FileID, event)
+}
+
+// PublishFileVersionedEvent publishes a file version event
+func (p *Producer) PublishFileVersionedEvent(ctx context.Context, event *FileVersionedEvent) error {
+	return p.publishEvent(ctx, "file.versioned", event.FileID, event)
+}
+
+// publishEvent is a generic method to publish events to Kafka
+func (p *Producer) publishEvent(ctx context.Context, eventType, key string, event interface{}) error {
+	// Check if producer is closed
+	p.mu.RLock()
+	if p.closed {
+		p.mu.RUnlock()
+		return fmt.Errorf("producer is closed")
+	}
+	p.mu.RUnlock()
+
+	// Marshal event data
+	data, err := json.Marshal(event)
+	if err != nil {
+		p.logger.WithError(err).Error("Failed to marshal Kafka event")
+		return fmt.Errorf("failed to marshal event: %w", err)
+	}
+
+	// Retry logic with exponential backoff
+	var lastErr error
+	for attempt := 0; attempt < p.maxRetries; attempt++ {
+		// Check context cancellation
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		// Check if producer was closed during retries
+		p.mu.RLock()
+		if p.closed {
+			p.mu.RUnlock()
+			return fmt.Errorf("producer closed during publish")
+		}
+		p.mu.RUnlock()
+
+		// Attempt to publish
+		err = p.writer.WriteMessages(ctx, kafka.Message{
+			Key:   []byte(key),
+			Value: data,
+			Time:  time.Now(),
+		})
+
+		if err == nil {
+			p.logger.WithFields(logrus.Fields{
+				"event_type": eventType,
+				"key":        key,
+				"attempt":    attempt + 1,
+			}).Debug("Successfully published Kafka event")
+			return nil
+		}
+
+		lastErr = err
+		p.logger.WithFields(logrus.Fields{
+			"attempt":     attempt + 1,
+			"max_retries": p.maxRetries,
+			"error":       err.Error(),
+			"event_type":  eventType,
+			"key":         key,
+		}).Warn("Failed to publish Kafka message, retrying...")
+
+		// Exponential backoff
+		if attempt < p.maxRetries-1 {
+			backoff := time.Duration(attempt+1) * time.Second
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(backoff):
+			}
+		}
+	}
+
+	p.logger.WithFields(logrus.Fields{
+		"event_type":  eventType,
+		"key":         key,
+		"max_retries": p.maxRetries,
+		"error":       lastErr.Error(),
+	}).Error("Failed to publish Kafka event after all retries")
+
+	return fmt.Errorf("failed to publish event after %d retries: %w", p.maxRetries, lastErr)
+}
+
+// PublishFileEvent publishes a legacy file event (for backward compatibility)
 func (p *Producer) PublishFileEvent(ctx context.Context, event FileEvent) error {
 	// Check if producer is closed
 	p.mu.RLock()

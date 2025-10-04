@@ -136,9 +136,15 @@ func (r *StorageRepository) RemoveUsage(ctx context.Context, userID string, remo
 		"$set": bson.M{
 			"updated_at": time.Now(),
 		},
+		"$setOnInsert": bson.M{
+			"user_id":     userID,
+			"quota_bytes": 100 * 1024 * 1024 * 1024, // 100GB default quota
+			"created_at":  time.Now(),
+		},
 	}
 
-	_, err := r.collection.UpdateOne(ctx, filter, update)
+	opts := options.Update().SetUpsert(true)
+	_, err := r.collection.UpdateOne(ctx, filter, update, opts)
 	return err
 }
 
@@ -207,4 +213,43 @@ func (r *StorageRepository) CalculateUsageFromFiles(ctx context.Context, userID 
 	}
 
 	return stats, nil
+}
+
+// RecalculateAllUsage recalculates storage usage for all users
+func (r *StorageRepository) RecalculateAllUsage(ctx context.Context, fileRepo *FileRepository) error {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	// Get all unique user IDs from files
+	pipeline := []bson.M{
+		{"$group": bson.M{"_id": "$owner_id"}},
+	}
+
+	cursor, err := fileRepo.collection.Aggregate(ctx, pipeline)
+	if err != nil {
+		return err
+	}
+	defer cursor.Close(ctx)
+
+	var userIDs []string
+	for cursor.Next(ctx) {
+		var result struct {
+			ID string `bson:"_id"`
+		}
+		if err := cursor.Decode(&result); err != nil {
+			continue
+		}
+		userIDs = append(userIDs, result.ID)
+	}
+
+	// Recalculate usage for each user
+	for _, userID := range userIDs {
+		_, err := r.CalculateUsageFromFiles(ctx, userID, fileRepo)
+		if err != nil {
+			// Log error but continue with other users
+			continue
+		}
+	}
+
+	return nil
 }

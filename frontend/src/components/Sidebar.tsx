@@ -1,14 +1,15 @@
 'use client'
 
 import { useRouter, usePathname } from 'next/navigation'
-import { 
-  LayoutDashboard, 
-  FolderOpen, 
-  Users, 
-  Star, 
-  Settings, 
+import {
+  LayoutDashboard,
+  FolderOpen,
+  Users,
+  Star,
+  Settings,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Lock
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -27,6 +28,7 @@ export function Sidebar({ collapsed = false, onToggle, userId }: SidebarProps) {
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { name: 'My Files', href: '/dashboard', icon: FolderOpen },
     { name: 'Shared with Me', href: '/dashboard/shared', icon: Users },
+    { name: 'Private Folder', href: '/private-folder', icon: Lock },
     { name: 'Favorites', href: '/dashboard/favorites', icon: Star },
     { name: 'Settings', href: '/settings', icon: Settings },
   ]

@@ -182,7 +182,7 @@ export default function ProfilePage() {
             <CardContent className="pt-6">
               <div className="flex flex-col md:flex-row items-start md:items-center space-y-4 md:space-y-0 md:space-x-6">
                 <Avatar className="w-24 h-24">
-                  <AvatarImage src={profile.avatarUrl} alt={profile.fullName} />
+                  <AvatarImage src={profile.avatarUrl || ''} alt={profile.fullName} />
                   <AvatarFallback className="text-2xl">
                     {profile.fullName.split(' ').map(n => n[0]).join('')}
                   </AvatarFallback>

@@ -257,7 +257,7 @@ export default function SettingsPage() {
                 <CardContent className="space-y-6">
                   <div className="flex items-center space-x-6">
                     <Avatar className="w-20 h-20">
-                      <AvatarImage src={profileData.avatar_url} alt={profileData.full_name} />
+                      <AvatarImage src={profileData.avatar_url || ''} alt={profileData.full_name} />
                       <AvatarFallback className="text-xl">
                         {profileData.full_name.split(' ').map(n => n[0]).join('')}
                       </AvatarFallback>

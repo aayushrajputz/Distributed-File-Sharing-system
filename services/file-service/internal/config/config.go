@@ -73,6 +73,16 @@ type Config struct {
 	RedisPoolSize     int
 	RedisMinIdleConns int
 	FrontendURL       string
+	// Cassandra Configuration
+	CassandraHosts       []string
+	CassandraPort        int
+	CassandraKeyspace    string
+	CassandraUsername    string
+	CassandraPassword    string
+	CassandraConsistency string
+	CassandraTimeout     time.Duration
+	CassandraNumConns    int
+	CassandraEnableTLS   bool
 }
 
 func Load() (*Config, error) {
@@ -146,6 +156,16 @@ func Load() (*Config, error) {
 		RedisPoolSize:     getEnvInt("REDIS_POOL_SIZE", DefaultRedisPoolSize),
 		RedisMinIdleConns: getEnvInt("REDIS_MIN_IDLE_CONNS", DefaultRedisMinIdleConns),
 		FrontendURL:       getEnv("FRONTEND_URL", "http://localhost:3000"),
+		// Cassandra Configuration
+		CassandraHosts:       strings.Split(getEnv("CASSANDRA_HOSTS", "localhost"), ","),
+		CassandraPort:        getEnvInt("CASSANDRA_PORT", 9042),
+		CassandraKeyspace:    getEnv("CASSANDRA_KEYSPACE", "file_service"),
+		CassandraUsername:    getEnv("CASSANDRA_USER", ""),
+		CassandraPassword:    getEnv("CASSANDRA_PASSWORD", ""),
+		CassandraConsistency: getEnv("CASSANDRA_CONSISTENCY", "LOCAL_QUORUM"),
+		CassandraTimeout:     getEnvDuration("CASSANDRA_TIMEOUT", 10*time.Second),
+		CassandraNumConns:    getEnvInt("CASSANDRA_NUM_CONNS", 2),
+		CassandraEnableTLS:   getEnv("CASSANDRA_TLS_ENABLED", "false") == "true",
 	}, nil
 }
 

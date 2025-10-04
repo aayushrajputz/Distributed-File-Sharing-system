@@ -375,20 +375,43 @@ func (h *FileHandler) CompleteUpload(ctx context.Context, req *filev1.CompleteUp
 	}
 
 	// Publish file uploaded event with circuit breaker
-	event := kafka.FileEvent{
-		Type:      kafka.EventFileUploaded,
-		FileID:    file.ID.Hex(),
-		FileName:  file.Name,
-		OwnerID:   file.OwnerID,
-		Timestamp: time.Now().Format(time.RFC3339),
-	}
+	uploadEvent := kafka.NewFileUploadedEvent(
+		file.ID.Hex(),
+		file.OwnerID,
+		file.Name,
+		file.MimeType,
+		file.Size,
+		"{}", // Empty metadata for now
+	)
 
 	_, err = h.kafkaBreaker.Execute(func() (interface{}, error) {
-		return nil, h.producer.PublishFileEvent(ctx, event)
+		return nil, h.producer.PublishFileUploadedEvent(ctx, uploadEvent)
 	})
 
 	if err != nil {
-		logger.WithError(err).Warn("Failed to publish Kafka event (circuit breaker may be open)")
+		logger.WithError(err).Warn("Failed to publish file upload event (circuit breaker may be open)")
+		// Don't fail the request if event publishing fails
+	}
+
+	// Also publish file version event for version tracking
+	versionEvent := kafka.NewFileVersionedEvent(
+		file.ID.Hex(),
+		file.OwnerID,
+		file.Name,
+		file.MimeType,
+		file.StoragePath,
+		file.Checksum,
+		"{}", // Empty metadata for now
+		file.Size,
+		1, // First version
+	)
+
+	_, err = h.kafkaBreaker.Execute(func() (interface{}, error) {
+		return nil, h.producer.PublishFileVersionedEvent(ctx, versionEvent)
+	})
+
+	if err != nil {
+		logger.WithError(err).Warn("Failed to publish file version event (circuit breaker may be open)")
 		// Don't fail the request if event publishing fails
 	}
 
@@ -564,6 +587,23 @@ func (h *FileHandler) GetDownloadURL(ctx context.Context, req *filev1.GetDownloa
 		return nil, status.Error(codes.Internal, "unable to generate download URL")
 	}
 
+	// Publish file download event
+	downloadEvent := kafka.NewFileDownloadedEvent(
+		file.ID.Hex(),
+		userID,
+		file.Name,
+		"{}", // Empty metadata for now
+	)
+
+	_, err = h.kafkaBreaker.Execute(func() (interface{}, error) {
+		return nil, h.producer.PublishFileDownloadedEvent(ctx, downloadEvent)
+	})
+
+	if err != nil {
+		logger.WithError(err).Warn("Failed to publish file download event")
+		// Don't fail the request if event publishing fails
+	}
+
 	logger.Info("Download URL generated successfully")
 
 	return &filev1.GetDownloadURLResponse{
@@ -638,20 +678,19 @@ func (h *FileHandler) DeleteFile(ctx context.Context, req *filev1.DeleteFileRequ
 	}
 
 	// Publish file deleted event
-	event := kafka.FileEvent{
-		Type:      kafka.EventFileDeleted,
-		FileID:    file.ID.Hex(),
-		FileName:  file.Name,
-		OwnerID:   file.OwnerID,
-		Timestamp: time.Now().Format(time.RFC3339),
-	}
+	deleteEvent := kafka.NewFileDeletedEvent(
+		file.ID.Hex(),
+		file.OwnerID,
+		file.Name,
+		"{}", // Empty metadata for now
+	)
 
 	_, err = h.kafkaBreaker.Execute(func() (interface{}, error) {
-		return nil, h.producer.PublishFileEvent(ctx, event)
+		return nil, h.producer.PublishFileDeletedEvent(ctx, deleteEvent)
 	})
 
 	if err != nil {
-		logger.WithError(err).Warn("Failed to publish Kafka event")
+		logger.WithError(err).Warn("Failed to publish file deletion event")
 	}
 
 	logger.Info("File permanently deleted successfully")
@@ -727,17 +766,19 @@ func (h *FileHandler) ShareFile(ctx context.Context, req *filev1.ShareFileReques
 	var protoShares []*filev1.FileShare
 	var shareLinkGenerated bool
 
-	// If no emails provided, create a link-only share
+	// If no emails provided, create a link-only share (public share)
 	if len(req.SharedWithEmails) == 0 {
 		share := &models.FileShare{
-			FileID:     req.FileId,
-			OwnerID:    userID,
-			Permission: models.Permission(req.Permission.String()),
-			ExpiryTime: expiryTime,
-			ShareLink:  shareLink,
-			IsActive:   true,
-			CreatedAt:  time.Now(),
-			UpdatedAt:  time.Now(),
+			FileID:          req.FileId,
+			OwnerID:         userID,
+			SharedWithID:    "", // Empty for public shares
+			SharedWithEmail: "", // Empty for public shares
+			Permission:      models.Permission(req.Permission.String()),
+			ExpiryTime:      expiryTime,
+			ShareLink:       shareLink,
+			IsActive:        true,
+			CreatedAt:       time.Now(),
+			UpdatedAt:       time.Now(),
 		}
 
 		if err := h.fileRepo.CreateShare(ctx, share); err != nil {

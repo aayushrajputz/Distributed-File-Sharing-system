@@ -86,7 +86,7 @@ service FileService {
   // GetStorageUsage gets user's storage usage statistics
   rpc GetStorageUsage(GetStorageUsageRequest) returns (GetStorageUsageResponse) {
     option (google.api.http) = {
-      get: "/api/v1/storage/usage"
+      get: "/api/v1/files/storage/usage"
     };
   }
 

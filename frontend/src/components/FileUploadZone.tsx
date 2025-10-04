@@ -24,6 +24,7 @@ export function FileUploadZone({
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
 
   const getFileIcon = (file: File) => {
+    if (!file.type) return <FileText className="w-4 h-4 text-gray-500" />
     if (file.type.startsWith('image/')) return <Image className="w-4 h-4 text-blue-500" />
     if (file.type.startsWith('video/')) return <Video className="w-4 h-4 text-purple-500" />
     if (file.type.startsWith('audio/')) return <Music className="w-4 h-4 text-green-500" />
@@ -41,6 +42,7 @@ export function FileUploadZone({
 
   const validateFile = (file: File) => {
     if (acceptedTypes.includes('*')) return true
+    if (!file.type) return false
     return acceptedTypes.some(type => file.type.startsWith(type))
   }
 

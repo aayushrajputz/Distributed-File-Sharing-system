@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"net/http"
@@ -315,7 +316,7 @@ func main() {
 	})
 
 	// Handle storage usage route (must come before :id route)
-	fileServiceGroup.Any("/v1/files/storage/usage", fileServiceHandler)
+	fileServiceGroup.GET("/v1/files/storage/usage", fileServiceHandler)
 
 	// Handle other file service routes
 	fileServiceGroup.Any("/v1/files/upload", fileServiceHandler)
@@ -330,9 +331,47 @@ func main() {
 	fileServiceGroup.Any("/v1/files/:id/permanent", fileServiceHandler)
 	fileServiceGroup.Any("/v1/files/:id", fileServiceHandler)
 
+	// Private folder routes (proxy directly to file service)
+	fileServiceGroup.Any("/v1/private-folder/*path", fileServiceHandler)
+
 	// Mount other services without auth middleware
 	router.Any("/api/v1/auth/*path", gin.WrapF(gwmux.ServeHTTP))
-	router.Any("/api/v1/notifications/*path", gin.WrapF(gwmux.ServeHTTP))
+
+	// Custom handler for unread-count to work around gRPC gateway issue
+	// Use a different path to avoid conflict with wildcard
+	router.GET("/api/v1/notifications/unread-count", func(c *gin.Context) {
+		userID := c.Query("user_id")
+		if userID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "user_id parameter is required"})
+			return
+		}
+
+		// Make direct HTTP request to notification service
+		client := &http.Client{Timeout: 10 * time.Second}
+		req, err := http.NewRequest("GET", "http://notification-service:8084/api/v1/notifications/unread/count", nil)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request"})
+			return
+		}
+		req.Header.Set("X-User-ID", userID)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reach notification service"})
+			return
+		}
+		defer resp.Body.Close()
+
+		// Copy response
+		c.Writer.WriteHeader(resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		c.Writer.Write(body)
+	})
+
+	// Mount other notification endpoints through gRPC gateway
+	// Use a more specific pattern to avoid conflicts
+	router.Any("/api/v1/notifications/", gin.WrapF(gwmux.ServeHTTP))
+	router.Any("/api/v1/notifications", gin.WrapF(gwmux.ServeHTTP))
 
 	// Mount billing service - proxy directly to billing service
 	// All billing endpoints go through the same proxy

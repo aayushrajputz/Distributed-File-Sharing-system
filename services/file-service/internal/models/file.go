@@ -35,7 +35,9 @@ type File struct {
 	ContentHash string             `bson:"content_hash,omitempty" json:"content_hash,omitempty"` // For deduplication
 	Status      FileStatus         `bson:"status" json:"status"`
 	Metadata    map[string]string  `bson:"metadata,omitempty" json:"metadata,omitempty"`
-	DeletedAt   *time.Time         `bson:"deleted_at,omitempty" json:"deleted_at,omitempty"` // Timestamp when file was moved to trash
+	IsPrivate   bool               `bson:"is_private" json:"is_private"`                       // Privacy flag - true for private files
+	SharedWith  []string           `bson:"shared_with,omitempty" json:"shared_with,omitempty"` // User IDs with explicit private access
+	DeletedAt   *time.Time         `bson:"deleted_at,omitempty" json:"deleted_at,omitempty"`   // Timestamp when file was moved to trash
 	CreatedAt   time.Time          `bson:"created_at" json:"created_at"`
 	UpdatedAt   time.Time          `bson:"updated_at" json:"updated_at"`
 }

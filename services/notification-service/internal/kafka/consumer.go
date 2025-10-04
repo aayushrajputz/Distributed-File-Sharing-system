@@ -10,24 +10,29 @@ import (
 	"github.com/segmentio/kafka-go"
 	"github.com/yourusername/distributed-file-sharing/services/notification-service/internal/models"
 	"github.com/yourusername/distributed-file-sharing/services/notification-service/internal/repository"
+	"github.com/yourusername/distributed-file-sharing/services/notification-service/internal/services"
 )
 
 type FileEvent struct {
-	Type      string            `json:"type"`
-	FileID    string            `json:"file_id"`
-	FileName  string            `json:"file_name"`
-	OwnerID   string            `json:"owner_id"`
-	Metadata  map[string]string `json:"metadata,omitempty"`
-	Timestamp string            `json:"timestamp"`
+	Type        string                 `json:"type"`
+	UserID      string                 `json:"user_id"`
+	FileID      string                 `json:"file_id"`
+	FileName    string                 `json:"file_name"`
+	FileSize    int64                  `json:"file_size"`
+	Success     bool                   `json:"success"`
+	ErrorReason string                 `json:"error_reason,omitempty"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+	Timestamp   time.Time              `json:"timestamp"`
 }
 
 type Consumer struct {
 	reader       *kafka.Reader
 	notifRepo    *repository.NotificationRepository
 	streamBroker *StreamBroker
+	notifSvc     *services.NotificationService
 }
 
-func NewConsumer(brokers []string, groupID, topic string, notifRepo *repository.NotificationRepository, streamBroker *StreamBroker) *Consumer {
+func NewConsumer(brokers []string, groupID, topic string, notifRepo *repository.NotificationRepository, streamBroker *StreamBroker, notifSvc *services.NotificationService) *Consumer {
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:        brokers,
 		GroupID:        groupID,
@@ -42,6 +47,7 @@ func NewConsumer(brokers []string, groupID, topic string, notifRepo *repository.
 		reader:       reader,
 		notifRepo:    notifRepo,
 		streamBroker: streamBroker,
+		notifSvc:     notifSvc,
 	}
 }
 
@@ -73,62 +79,36 @@ func (c *Consumer) processMessage(ctx context.Context, msg kafka.Message) error 
 		return fmt.Errorf("failed to unmarshal event: %w", err)
 	}
 
-	log.Printf("Processing event: %s for file %s", event.Type, event.FileID)
+	log.Printf("Processing event: %s for file %s (user: %s)", event.Type, event.FileID, event.UserID)
 
-	// Create notification based on event type
-	notification, err := c.createNotificationFromEvent(event)
-	if err != nil {
-		return fmt.Errorf("failed to create notification: %w", err)
+	// Convert to KafkaFileEvent format
+	kafkaEvent := &models.KafkaFileEvent{
+		Type:        event.Type,
+		UserID:      event.UserID,
+		FileID:      event.FileID,
+		FileName:    event.FileName,
+		FileSize:    event.FileSize,
+		Success:     event.Success,
+		ErrorReason: event.ErrorReason,
+		Metadata:    event.Metadata,
+		Timestamp:   event.Timestamp,
 	}
 
-	// Save to MongoDB
-	if err := c.notifRepo.Create(ctx, notification); err != nil {
-		return fmt.Errorf("failed to save notification: %w", err)
+	// Process through notification service
+	if err := c.notifSvc.ProcessKafkaEvent(ctx, kafkaEvent); err != nil {
+		log.Printf("Failed to process Kafka event: %v", err)
+		return err
 	}
 
-	log.Printf("Created notification %s for user %s", notification.ID.Hex(), notification.UserID)
-
-	// Send to streaming subscribers
-	c.streamBroker.Broadcast(notification)
-
+	log.Printf("Successfully processed event: %s for user %s", event.Type, event.UserID)
 	return nil
 }
 
+// createNotificationFromEvent is deprecated - use ProcessKafkaEvent instead
 func (c *Consumer) createNotificationFromEvent(event FileEvent) (*models.Notification, error) {
-	notification := &models.Notification{
-		Type:     models.NotificationType(event.Type),
-		Metadata: event.Metadata,
-	}
-
-	switch event.Type {
-	case "file.uploaded":
-		notification.UserID = event.OwnerID
-		notification.Title = "File Uploaded"
-		notification.Body = fmt.Sprintf("Your file '%s' has been uploaded successfully", event.FileName)
-		notification.Link = fmt.Sprintf("/files/%s", event.FileID)
-
-	case "file.shared":
-		// Notification for the person receiving the share
-		if sharedWith, ok := event.Metadata["shared_with"]; ok {
-			// TODO: Look up user ID from email via Auth Service
-			notification.UserID = sharedWith // Placeholder
-			notification.Title = "File Shared With You"
-			notification.Body = fmt.Sprintf("A file '%s' has been shared with you", event.FileName)
-			notification.Link = fmt.Sprintf("/files/%s", event.FileID)
-		} else {
-			return nil, fmt.Errorf("shared_with metadata missing")
-		}
-
-	case "file.deleted":
-		notification.UserID = event.OwnerID
-		notification.Title = "File Deleted"
-		notification.Body = fmt.Sprintf("Your file '%s' has been deleted", event.FileName)
-
-	default:
-		return nil, fmt.Errorf("unknown event type: %s", event.Type)
-	}
-
-	return notification, nil
+	// This method is kept for backward compatibility but should not be used
+	// Use ProcessKafkaEvent in the notification service instead
+	return nil, fmt.Errorf("deprecated method - use ProcessKafkaEvent instead")
 }
 
 func (c *Consumer) Close() error {

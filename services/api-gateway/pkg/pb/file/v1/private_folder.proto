@@ -1,0 +1,148 @@
+syntax = "proto3";
+
+package file.v1;
+
+option go_package = "github.com/yourusername/distributed-file-sharing/proto/file/v1";
+
+// Private Folder Service for PIN-protected file access
+service PrivateFolderService {
+  // Set or update user's PIN
+  rpc SetPIN(SetPINRequest) returns (SetPINResponse);
+  
+  // Validate user's PIN
+  rpc ValidatePIN(ValidatePINRequest) returns (ValidatePINResponse);
+  
+  // Move file to private folder
+  rpc MakeFilePrivate(MakeFilePrivateRequest) returns (MakeFilePrivateResponse);
+  
+  // Remove file from private folder
+  rpc RemoveFileFromPrivate(RemoveFileFromPrivateRequest) returns (RemoveFileFromPrivateResponse);
+  
+  // Get all private files for a user
+  rpc GetPrivateFiles(GetPrivateFilesRequest) returns (GetPrivateFilesResponse);
+  
+  // Get access logs for a user
+  rpc GetAccessLogs(GetAccessLogsRequest) returns (GetAccessLogsResponse);
+  
+  // Check if user can access a file (PIN required check)
+  rpc CheckFileAccess(CheckFileAccessRequest) returns (CheckFileAccessResponse);
+}
+
+// Set PIN Request
+message SetPINRequest {
+  string user_id = 1;
+  string pin = 2;
+}
+
+// Set PIN Response
+message SetPINResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// Validate PIN Request
+message ValidatePINRequest {
+  string user_id = 1;
+  string pin = 2;
+  string ip_address = 3;
+  string user_agent = 4;
+}
+
+// Validate PIN Response
+message ValidatePINResponse {
+  bool success = 1;
+  string message = 2;
+  int32 attempts_left = 3;
+  string locked_until = 4;
+}
+
+// Make File Private Request
+message MakeFilePrivateRequest {
+  string user_id = 1;
+  string file_id = 2;
+  string pin = 3;
+}
+
+// Make File Private Response
+message MakeFilePrivateResponse {
+  bool success = 1;
+  string message = 2;
+  string file_id = 3;
+}
+
+// Remove File From Private Request
+message RemoveFileFromPrivateRequest {
+  string user_id = 1;
+  string file_id = 2;
+  string pin = 3;
+}
+
+// Remove File From Private Response
+message RemoveFileFromPrivateResponse {
+  bool success = 1;
+  string message = 2;
+  string file_id = 3;
+}
+
+// Get Private Files Request
+message GetPrivateFilesRequest {
+  string user_id = 1;
+  int64 limit = 2;
+  int64 offset = 3;
+}
+
+// Get Private Files Response
+message GetPrivateFilesResponse {
+  bool success = 1;
+  string message = 2;
+  repeated PrivateFileInfo files = 3;
+  int64 total = 4;
+}
+
+// Private File Info
+message PrivateFileInfo {
+  string file_id = 1;
+  string file_name = 2;
+  int64 file_size = 3;
+  string content_type = 4;
+  int64 moved_at = 5;
+  string original_folder = 6;
+}
+
+// Get Access Logs Request
+message GetAccessLogsRequest {
+  string user_id = 1;
+  int64 limit = 2;
+}
+
+// Get Access Logs Response
+message GetAccessLogsResponse {
+  bool success = 1;
+  string message = 2;
+  repeated AccessLog access_logs = 3;
+}
+
+// Access Log
+message AccessLog {
+  string id = 1;
+  string user_id = 2;
+  string file_id = 3;
+  string action = 4;
+  string ip_address = 5;
+  string user_agent = 6;
+  bool success = 7;
+  string failure_reason = 8;
+  int64 created_at = 9;
+}
+
+// Check File Access Request
+message CheckFileAccessRequest {
+  string user_id = 1;
+  string file_id = 2;
+}
+
+// Check File Access Response
+message CheckFileAccessResponse {
+  bool has_access = 1;
+  string message = 2;
+}

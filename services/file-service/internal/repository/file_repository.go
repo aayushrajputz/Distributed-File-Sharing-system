@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/yourusername/distributed-file-sharing/services/file-service/internal/models"
@@ -553,12 +554,12 @@ func (r *FileRepository) FindFavoritesByUser(ctx context.Context, userID string,
 	pipeline := []bson.M{
 		// Match favorites for the user
 		{"$match": bson.M{"user_id": userID}},
-		
+
 		// Convert file_id string to ObjectID for lookup
 		{"$addFields": bson.M{
 			"file_object_id": bson.M{"$toObjectId": "$file_id"},
 		}},
-		
+
 		// Lookup file details
 		{"$lookup": bson.M{
 			"from":         "files",
@@ -566,17 +567,17 @@ func (r *FileRepository) FindFavoritesByUser(ctx context.Context, userID string,
 			"foreignField": "_id",
 			"as":           "file",
 		}},
-		
+
 		// Unwind file array
 		{"$unwind": "$file"},
-		
+
 		// Sort by favorite creation date (most recent first)
 		{"$sort": bson.M{"created_at": -1}},
-		
+
 		// Pagination
 		{"$skip": skip},
 		{"$limit": int64(limit)},
-		
+
 		// Project only the file data
 		{"$replaceRoot": bson.M{"newRoot": "$file"}},
 	}
@@ -599,4 +600,249 @@ func (r *FileRepository) FindFavoritesByUser(ctx context.Context, userID string,
 	}
 
 	return files, total, nil
+}
+
+// CheckDownloadPermission checks if a user has permission to download a file
+// Returns true if user is the owner OR file is shared with user with any permission level
+func (r *FileRepository) CheckDownloadPermission(ctx context.Context, fileID, userID string) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	// Convert fileID to ObjectID
+	objectID, err := primitive.ObjectIDFromHex(fileID)
+	if err != nil {
+		return false, err
+	}
+
+	// Check if user is the owner
+	var file models.File
+	err = r.collection.FindOne(ctx, bson.M{
+		"_id":      objectID,
+		"owner_id": userID,
+	}).Decode(&file)
+
+	if err == nil {
+		// User is the owner
+		return true, nil
+	}
+
+	if err != mongo.ErrNoDocuments {
+		// Database error
+		return false, err
+	}
+
+	// Check if file is shared with user
+	var share models.FileShare
+	err = r.shareCollection.FindOne(ctx, bson.M{
+		"file_id":        fileID,
+		"shared_with_id": userID,
+		"is_active":      true,
+	}).Decode(&share)
+
+	if err == mongo.ErrNoDocuments {
+		// File not shared with user
+		return false, nil
+	}
+
+	if err != nil {
+		// Database error
+		return false, err
+	}
+
+	// Check if share has expired
+	if share.ExpiryTime != nil && share.ExpiryTime.Before(time.Now()) {
+		return false, nil
+	}
+
+	// User has access through sharing
+	return true, nil
+}
+
+// UpdateFilePrivacy updates the privacy settings of a file
+func (r *FileRepository) UpdateFilePrivacy(ctx context.Context, fileID, ownerID string, isPrivate bool, sharedWith []string) error {
+	objectID, err := primitive.ObjectIDFromHex(fileID)
+	if err != nil {
+		return fmt.Errorf("invalid file ID: %w", err)
+	}
+
+	// Verify ownership
+	var file models.File
+	err = r.collection.FindOne(ctx, bson.M{
+		"_id":      objectID,
+		"owner_id": ownerID,
+	}).Decode(&file)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return fmt.Errorf("file not found or you don't have permission")
+		}
+		return fmt.Errorf("failed to verify ownership: %w", err)
+	}
+
+	// Update privacy settings
+	update := bson.M{
+		"$set": bson.M{
+			"is_private":  isPrivate,
+			"shared_with": sharedWith,
+			"updated_at":  time.Now(),
+		},
+	}
+
+	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": objectID}, update)
+	if err != nil {
+		return fmt.Errorf("failed to update privacy settings: %w", err)
+	}
+
+	if result.MatchedCount == 0 {
+		return fmt.Errorf("file not found")
+	}
+
+	return nil
+}
+
+// ManagePrivateAccess adds or removes users from a private file's access list
+func (r *FileRepository) ManagePrivateAccess(ctx context.Context, fileID, ownerID string, userIDs []string, action string) error {
+	objectID, err := primitive.ObjectIDFromHex(fileID)
+	if err != nil {
+		return fmt.Errorf("invalid file ID: %w", err)
+	}
+
+	// Verify ownership
+	var file models.File
+	err = r.collection.FindOne(ctx, bson.M{
+		"_id":      objectID,
+		"owner_id": ownerID,
+	}).Decode(&file)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return fmt.Errorf("file not found or you don't have permission")
+		}
+		return fmt.Errorf("failed to verify ownership: %w", err)
+	}
+
+	// Prepare update based on action
+	var update bson.M
+	if action == "add" {
+		update = bson.M{
+			"$addToSet": bson.M{
+				"shared_with": bson.M{"$each": userIDs},
+			},
+			"$set": bson.M{
+				"updated_at": time.Now(),
+			},
+		}
+	} else if action == "remove" {
+		update = bson.M{
+			"$pull": bson.M{
+				"shared_with": bson.M{"$in": userIDs},
+			},
+			"$set": bson.M{
+				"updated_at": time.Now(),
+			},
+		}
+	} else {
+		return fmt.Errorf("invalid action: must be 'add' or 'remove'")
+	}
+
+	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": objectID}, update)
+	if err != nil {
+		return fmt.Errorf("failed to manage private access: %w", err)
+	}
+
+	if result.MatchedCount == 0 {
+		return fmt.Errorf("file not found")
+	}
+
+	return nil
+}
+
+// ListPrivateFiles returns private files that the user has access to (owner or in shared_with list)
+func (r *FileRepository) ListPrivateFiles(ctx context.Context, userID string, page, limit int) ([]*models.File, int64, error) {
+	skip := (page - 1) * limit
+
+	// Query for private files where user is owner OR user is in shared_with list
+	filter := bson.M{
+		"is_private": true,
+		"deleted_at": bson.M{"$exists": false},
+		"$or": []bson.M{
+			{"owner_id": userID},
+			{"shared_with": userID},
+		},
+	}
+
+	// Get total count
+	total, err := r.collection.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count private files: %w", err)
+	}
+
+	// Get files with pagination
+	cursor, err := r.collection.Find(ctx, filter, &options.FindOptions{
+		Skip:  &[]int64{int64(skip)}[0],
+		Limit: &[]int64{int64(limit)}[0],
+		Sort:  bson.M{"created_at": -1},
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to list private files: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var files []*models.File
+	if err := cursor.All(ctx, &files); err != nil {
+		return nil, 0, fmt.Errorf("failed to decode private files: %w", err)
+	}
+
+	return files, total, nil
+}
+
+// CheckPublicShareAccess checks if a file has active public shares (link-only shares)
+func (r *FileRepository) CheckPublicShareAccess(ctx context.Context, fileID string) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	// Check if there are any active public shares for this file
+	// Public shares are those with empty shared_with_email (link-only shares)
+	filter := bson.M{
+		"file_id":        fileID,
+		"shared_with_id": "", // Empty for public shares
+		"is_active":      true,
+		"$or": []bson.M{
+			{"expiry_time": bson.M{"$exists": false}},  // No expiry
+			{"expiry_time": bson.M{"$gt": time.Now()}}, // Not expired
+		},
+	}
+
+	count, err := r.shareCollection.CountDocuments(ctx, filter)
+	if err != nil {
+		return false, fmt.Errorf("failed to check public share access: %w", err)
+	}
+
+	return count > 0, nil
+}
+
+// GetPublicShare gets the public share details for a file
+func (r *FileRepository) GetPublicShare(ctx context.Context, fileID string) (*models.FileShare, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	// Find the active public share for this file
+	filter := bson.M{
+		"file_id":        fileID,
+		"shared_with_id": "", // Empty for public shares
+		"is_active":      true,
+		"$or": []bson.M{
+			{"expiry_time": bson.M{"$exists": false}},  // No expiry
+			{"expiry_time": bson.M{"$gt": time.Now()}}, // Not expired
+		},
+	}
+
+	var share models.FileShare
+	err := r.shareCollection.FindOne(ctx, filter).Decode(&share)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, fmt.Errorf("no active public share found for file")
+		}
+		return nil, fmt.Errorf("failed to get public share: %w", err)
+	}
+
+	return &share, nil
 }

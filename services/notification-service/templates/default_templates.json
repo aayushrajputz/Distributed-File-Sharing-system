@@ -1,0 +1,108 @@
+{
+  "templates": [
+    {
+      "template_id": "file_uploaded_email",
+      "event_type": "file.uploaded",
+      "channel": "email",
+      "subject_template": "✅ File Upload Complete: {{.FileName}}",
+      "body_template": "Hello {{.UserName}},\n\nYour file '{{.FileName}}' ({{.FileSizeFormatted}}) has been uploaded successfully.\n\nUploaded at: {{.Timestamp.Format \"2006-01-02 15:04:05\"}}\n\nBest regards,\nFile Sharing Platform",
+      "is_active": true
+    },
+    {
+      "template_id": "file_uploaded_sms",
+      "event_type": "file.uploaded",
+      "channel": "sms",
+      "subject_template": "File Upload Complete",
+      "body_template": "✅ {{.FileName}} uploaded successfully ({{.FileSizeFormatted}})",
+      "is_active": true
+    },
+    {
+      "template_id": "file_uploaded_push",
+      "event_type": "file.uploaded",
+      "channel": "push",
+      "subject_template": "File Upload Complete",
+      "body_template": "{{.FileName}} uploaded successfully",
+      "is_active": true
+    },
+    {
+      "template_id": "file_uploaded_inapp",
+      "event_type": "file.uploaded",
+      "channel": "inapp",
+      "subject_template": "File Upload Complete",
+      "body_template": "{{.FileName}} ({{.FileSizeFormatted}}) uploaded successfully",
+      "is_active": true
+    },
+    {
+      "template_id": "file_upload_failed_email",
+      "event_type": "file.upload.failed",
+      "channel": "email",
+      "subject_template": "❌ File Upload Failed: {{.FileName}}",
+      "body_template": "Hello {{.UserName}},\n\nUnfortunately, your file '{{.FileName}}' could not be uploaded.\n\nError: {{.ErrorMessage}}\n\nPlease try again or contact support if the issue persists.\n\nBest regards,\nFile Sharing Platform",
+      "is_active": true
+    },
+    {
+      "template_id": "file_upload_failed_sms",
+      "event_type": "file.upload.failed",
+      "channel": "sms",
+      "subject_template": "File Upload Failed",
+      "body_template": "❌ {{.FileName}} upload failed: {{.ErrorMessage}}",
+      "is_active": true
+    },
+    {
+      "template_id": "file_deleted_email",
+      "event_type": "file.deleted",
+      "channel": "email",
+      "subject_template": "🗑️ File Deleted: {{.FileName}}",
+      "body_template": "Hello {{.UserName}},\n\nYour file '{{.FileName}}' has been deleted.\n\nDeleted at: {{.Timestamp.Format \"2006-01-02 15:04:05\"}}\n\nBest regards,\nFile Sharing Platform",
+      "is_active": true
+    },
+    {
+      "template_id": "file_shared_email",
+      "event_type": "file.shared",
+      "channel": "email",
+      "subject_template": "📁 File Shared: {{.FileName}}",
+      "body_template": "Hello {{.UserName}},\n\nA file '{{.FileName}}' has been shared with you.\n\nShared at: {{.Timestamp.Format \"2006-01-02 15:04:05\"}}\n\nBest regards,\nFile Sharing Platform",
+      "is_active": true
+    },
+    {
+      "template_id": "quota_warning_80_email",
+      "event_type": "quota.warning.80",
+      "channel": "email",
+      "subject_template": "⚠️ Storage Quota Warning (80%)",
+      "body_template": "Hello {{.UserName}},\n\nYou have used 80% of your storage quota.\n\nCurrent usage: {{.FileSizeFormatted}}\n\nConsider upgrading your plan or deleting unused files.\n\nBest regards,\nFile Sharing Platform",
+      "is_active": true
+    },
+    {
+      "template_id": "quota_warning_90_email",
+      "event_type": "quota.warning.90",
+      "channel": "email",
+      "subject_template": "⚠️ Storage Quota Warning (90%)",
+      "body_template": "Hello {{.UserName}},\n\nYou have used 90% of your storage quota.\n\nCurrent usage: {{.FileSizeFormatted}}\n\nPlease upgrade your plan or delete unused files immediately.\n\nBest regards,\nFile Sharing Platform",
+      "is_active": true
+    },
+    {
+      "template_id": "quota_exceeded_email",
+      "event_type": "quota.exceeded",
+      "channel": "email",
+      "subject_template": "🚨 Storage Quota Exceeded",
+      "body_template": "Hello {{.UserName}},\n\nYou have exceeded your storage quota.\n\nCurrent usage: {{.FileSizeFormatted}}\n\nPlease upgrade your plan immediately to continue using the service.\n\nBest regards,\nFile Sharing Platform",
+      "is_active": true
+    },
+    {
+      "template_id": "security_alert_email",
+      "event_type": "security.alert",
+      "channel": "email",
+      "subject_template": "🚨 Security Alert",
+      "body_template": "Hello {{.UserName}},\n\nA security alert has been triggered for your account.\n\nPlease review your account activity and contact support if you notice any suspicious activity.\n\nBest regards,\nFile Sharing Platform",
+      "is_active": true
+    },
+    {
+      "template_id": "system_maintenance_email",
+      "event_type": "system.maintenance",
+      "channel": "email",
+      "subject_template": "🔧 System Maintenance Scheduled",
+      "body_template": "Hello {{.UserName}},\n\nSystem maintenance is scheduled for {{.Timestamp.Format \"2006-01-02 15:04:05\"}}.\n\nDuring this time, the service may be temporarily unavailable.\n\nWe apologize for any inconvenience.\n\nBest regards,\nFile Sharing Platform",
+      "is_active": true
+    }
+  ]
+}

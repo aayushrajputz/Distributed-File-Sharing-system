@@ -63,7 +63,7 @@ export default function DashboardPage() {
   // Filter files based on search and type
   const filteredFiles = files.filter(file => {
     const matchesSearch = file.name.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesType = filterType === 'all' || file.mime_type.startsWith(filterType)
+    const matchesType = filterType === 'all' || (file.mime_type && file.mime_type.startsWith(filterType))
     return matchesSearch && matchesType
   })
 
@@ -111,7 +111,7 @@ export default function DashboardPage() {
     }
   }, [mounted, isAuthenticated, router, user])
 
-  const loadUserInfo = async () => {
+  const loadUserInfo = useCallback(async () => {
     try {
       const token = localStorage.getItem('access_token')
       if (!token) {
@@ -138,7 +138,7 @@ export default function DashboardPage() {
       clearAuth()
       router.push('/auth/login')
     }
-  }
+  }, [router])
 
   const loadFavoriteStatus = async (fileIds: string[]) => {
     if (!user || fileIds.length === 0) return
@@ -150,7 +150,7 @@ export default function DashboardPage() {
     }
   }
 
-  const loadFiles = async () => {
+  const loadFiles = useCallback(async () => {
     if (!user) return
     console.log('Loading files for user:', user.userId)
     try {
@@ -176,9 +176,9 @@ export default function DashboardPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [user, loadFavoriteStatus])
 
-  const loadNotifications = async () => {
+  const loadNotifications = useCallback(async () => {
     if (!user) return
     try {
       const result = await notificationService.getUnreadCount(user.userId)
@@ -190,7 +190,7 @@ export default function DashboardPage() {
       setUnreadCount(0)
       setServiceStatus(prev => ({ ...prev, notificationService: false }))
     }
-  }
+  }, [user])
 
   const loadStorageData = async () => {
     try {
@@ -324,8 +324,7 @@ export default function DashboardPage() {
   const handleDownload = async (fileId: string, fileName: string) => {
     if (!user) return
     try {
-      const { download_url } = await fileService.getDownloadUrl(fileId)
-      window.open(download_url, '_blank')
+      await fileService.downloadFile(fileId, fileName)
       
       addNotification({
         notification_id: Date.now().toString(),
@@ -338,6 +337,15 @@ export default function DashboardPage() {
       })
     } catch (error) {
       console.error('Download failed:', error)
+      addNotification({
+        notification_id: Date.now().toString(),
+        user_id: user.userId,
+        type: 'error',
+        title: 'Download Failed',
+        body: `Failed to download "${fileName}"`,
+        is_read: false,
+        created_at: new Date().toISOString(),
+      })
     }
   }
 

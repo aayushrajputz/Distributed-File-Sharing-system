@@ -195,12 +195,12 @@ export const fileService = {
     try {
       const response = await this.listFavorites(1, 1000); // Get all favorites
       const favoriteFileIds = new Set(response.files.map(f => f.file_id));
-      
+
       const result: { [fileId: string]: boolean } = {};
       fileIds.forEach(fileId => {
         result[fileId] = favoriteFileIds.has(fileId);
       });
-      
+
       return result;
     } catch (error) {
       console.error('Failed to check favorite status:', error);
@@ -211,6 +211,128 @@ export const fileService = {
       });
       return result;
     }
+  },
+
+  async downloadFile(
+    fileId: string,
+    fileName: string,
+    onProgress?: (progress: { percentage: number; loaded: number; total: number; speed: number; estimatedTime: number }) => void
+  ): Promise<void> {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      throw new Error('No authentication token found');
+    }
+
+    // Use API Gateway URL for download
+    const apiGatewayUrl = process.env.NEXT_PUBLIC_API_GATEWAY_URL || 'http://localhost:8080';
+    const downloadUrl = `${apiGatewayUrl}/api/v1/files/${fileId}/download`;
+
+    const response = await fetch(downloadUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Download failed' }));
+      throw new Error(errorData.error || `Download failed with status ${response.status}`);
+    }
+
+    const contentLength = response.headers.get('Content-Length');
+    const total = contentLength ? parseInt(contentLength, 10) : 0;
+
+    if (!response.body) {
+      throw new Error('Response body is null');
+    }
+
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let loaded = 0;
+    let startTime = Date.now();
+    let lastUpdateTime = startTime;
+
+    while (true) {
+      const { done, value } = await reader.read();
+
+      if (done) {
+        break;
+      }
+
+      chunks.push(value);
+      loaded += value.length;
+
+      // Calculate progress
+      if (onProgress && total > 0) {
+        const now = Date.now();
+        const elapsed = (now - startTime) / 1000; // seconds
+        const speed = loaded / elapsed; // bytes per second
+        const remaining = total - loaded;
+        const estimatedTime = remaining / speed; // seconds
+
+        // Update progress every 100ms to avoid too many updates
+        if (now - lastUpdateTime > 100) {
+          onProgress({
+            percentage: Math.round((loaded / total) * 100),
+            loaded,
+            total,
+            speed,
+            estimatedTime,
+          });
+          lastUpdateTime = now;
+        }
+      }
+    }
+
+    // Final progress update
+    if (onProgress && total > 0) {
+      onProgress({
+        percentage: 100,
+        loaded: total,
+        total,
+        speed: 0,
+        estimatedTime: 0,
+      });
+    }
+
+    // Create blob from chunks
+    const blob = new Blob(chunks as BlobPart[]);
+
+    // Create download link and trigger download
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  },
+
+  async updatePrivacy(fileId: string, isPrivate: boolean, sharedWith?: string[]): Promise<{ message: string; file_id: string; is_private: boolean; shared_with: string[] }> {
+    const response = await fileApi.patch(`/${fileId}/privacy`, {
+      is_private: isPrivate,
+      shared_with: sharedWith || [],
+    });
+    return response.data;
+  },
+
+  async managePrivateAccess(fileId: string, userIds: string[], action: 'add' | 'remove'): Promise<{ message: string; file_id: string; action: string; users: string[] }> {
+    const response = await fileApi.post(`/${fileId}/share-private`, {
+      user_ids: userIds,
+      action,
+    });
+    return response.data;
+  },
+
+  async listPrivateFiles(page = 1, limit = 20): Promise<{ files: FileMetadata[]; total: number; page: number; limit: number }> {
+    const response = await fileApi.get('/private', {
+      params: {
+        page,
+        limit,
+      },
+    });
+    return response.data;
   },
 
 };

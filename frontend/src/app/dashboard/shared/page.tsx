@@ -11,18 +11,22 @@ import { Badge } from '@/components/ui/badge'
 import { Sidebar } from '@/components/Sidebar'
 import { PremiumHeader } from '@/components/PremiumHeader'
 import { PremiumFileCard } from '@/components/PremiumFileCard'
-import { FileMetadata } from '@/lib/api/files'
+import { FileMetadata, fileService } from '@/lib/api/files'
 import { cn } from '@/lib/utils'
+import { useToast } from '@/components/ui/use-toast'
 
 export default function SharedFilesPage() {
   const router = useRouter()
   const { user, isAuthenticated } = useAuthStore()
+  const { toast } = useToast()
   const [mounted, setMounted] = useState(false)
   const [loading, setLoading] = useState(true)
   const [sharedFiles, setSharedFiles] = useState<FileMetadata[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [downloadingFiles, setDownloadingFiles] = useState<{ [fileId: string]: { percentage: number; loaded: number; total: number; speed: number; estimatedTime: number } }>({})
+
 
   useEffect(() => {
     setMounted(true)
@@ -36,22 +40,61 @@ export default function SharedFilesPage() {
   const loadSharedFiles = async () => {
     try {
       setLoading(true)
-      // TODO: Replace with actual API call
-      // const response = await fileService.getSharedFiles()
-      // setSharedFiles(response.data)
-      
-      // Mock data for now
-      setSharedFiles([])
+      const response = await fileService.listSharedFiles(1, 100)
+      setSharedFiles(response.files)
     } catch (error) {
       console.error('Failed to load shared files:', error)
+      toast({
+        title: 'Error',
+        description: 'Failed to load shared files. Please try again.',
+        variant: 'destructive',
+      })
     } finally {
       setLoading(false)
     }
   }
 
   const handleDownload = async (fileId: string, fileName: string) => {
-    // TODO: Implement download
-    console.log('Download:', fileId, fileName)
+    try {
+      setDownloadingFiles(prev => ({
+        ...prev,
+        [fileId]: { percentage: 0, loaded: 0, total: 0, speed: 0, estimatedTime: 0 }
+      }))
+
+      await fileService.downloadFile(fileId, fileName, (progress) => {
+        setDownloadingFiles(prev => ({
+          ...prev,
+          [fileId]: progress
+        }))
+      })
+
+      // Remove from downloading state after completion
+      setDownloadingFiles(prev => {
+        const newState = { ...prev }
+        delete newState[fileId]
+        return newState
+      })
+
+      toast({
+        title: 'Download Complete',
+        description: `${fileName} has been downloaded successfully.`,
+      })
+    } catch (error: any) {
+      console.error('Download failed:', error)
+
+      // Remove from downloading state
+      setDownloadingFiles(prev => {
+        const newState = { ...prev }
+        delete newState[fileId]
+        return newState
+      })
+
+      toast({
+        title: 'Download Failed',
+        description: error.message || 'Failed to download file. Please try again.',
+        variant: 'destructive',
+      })
+    }
   }
 
   const handleShare = (fileId: string) => {

@@ -133,3 +133,12 @@ func (s *MinioStorage) GetFileInfo(ctx context.Context, objectName string) (*min
 	}
 	return &info, nil
 }
+
+// GetObject retrieves a file from MinIO storage and returns a reader
+func (s *MinioStorage) GetObject(ctx context.Context, objectName string) (*minio.Object, error) {
+	object, err := s.client.GetObject(ctx, s.bucket, objectName, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get object: %w", err)
+	}
+	return object, nil
+}

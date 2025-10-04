@@ -12,9 +12,10 @@ export interface StorageUsage {
 export const storageService = {
   async getStorageUsage(): Promise<StorageUsage> {
     try {
-      // Call file service directly to bypass API gateway issues
+      // Use API Gateway instead of direct service call
       const token = localStorage.getItem('access_token');
-      const response = await axios.get('http://localhost:8082/v1/files/storage/usage', {
+      const apiGatewayUrl = process.env.NEXT_PUBLIC_API_GATEWAY_URL || 'http://localhost:8080';
+      const response = await axios.get(`${apiGatewayUrl}/api/v1/files/storage/usage`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',

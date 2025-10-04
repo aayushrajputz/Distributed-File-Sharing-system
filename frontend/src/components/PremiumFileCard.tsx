@@ -18,7 +18,9 @@ import {
   Code,
   File as FileIcon,
   Calendar,
-  HardDrive
+  HardDrive,
+  Lock,
+  Unlock
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -34,7 +36,11 @@ interface PremiumFileCardProps {
   onDelete: (fileId: string, fileName: string) => void
   onRename?: (fileId: string, fileName: string) => void
   onFavorite?: (fileId: string) => void
+  onMakePrivate?: (fileId: string, fileName: string) => void
+  onRemoveFromPrivate?: (fileId: string, fileName: string) => void
   isFavorited?: boolean
+  isPrivate?: boolean
+  userId?: string
 }
 
 export function PremiumFileCard({
@@ -45,7 +51,11 @@ export function PremiumFileCard({
   onDelete,
   onRename,
   onFavorite,
+  onMakePrivate,
+  onRemoveFromPrivate,
   isFavorited = false,
+  isPrivate = false,
+  userId,
 }: PremiumFileCardProps) {
   const [showMenu, setShowMenu] = useState(false)
   const [isFavorite, setIsFavorite] = useState(isFavorited)
@@ -57,6 +67,7 @@ export function PremiumFileCard({
 
   const getFileIcon = (mimeType: string) => {
     const iconClass = "w-full h-full"
+    if (!mimeType) return <FileIcon className={iconClass} />
     if (mimeType.startsWith('image/')) return <ImageIcon className={iconClass} />
     if (mimeType.startsWith('video/')) return <Video className={iconClass} />
     if (mimeType.startsWith('audio/')) return <Music className={iconClass} />
@@ -67,6 +78,7 @@ export function PremiumFileCard({
   }
 
   const getFileColor = (mimeType: string) => {
+    if (!mimeType) return 'from-gray-500 to-slate-500'
     if (mimeType.startsWith('image/')) return 'from-blue-500 to-cyan-500'
     if (mimeType.startsWith('video/')) return 'from-purple-500 to-pink-500'
     if (mimeType.startsWith('audio/')) return 'from-green-500 to-emerald-500'
@@ -268,6 +280,33 @@ export function PremiumFileCard({
                       <Copy className="w-4 h-4 mr-2" />
                       Copy Link
                     </Button>
+                    {isPrivate ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          onRemoveFromPrivate?.(file.file_id, file.name)
+                          setShowMenu(false)
+                        }}
+                        className="w-full justify-start h-9 rounded-lg hover:bg-orange-500/10 hover:text-orange-500"
+                      >
+                        <Unlock className="w-4 h-4 mr-2" />
+                        Remove from Private
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          onMakePrivate?.(file.file_id, file.name)
+                          setShowMenu(false)
+                        }}
+                        className="w-full justify-start h-9 rounded-lg hover:bg-blue-500/10 hover:text-blue-500"
+                      >
+                        <Lock className="w-4 h-4 mr-2" />
+                        Make Private
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"
@@ -289,9 +328,17 @@ export function PremiumFileCard({
 
         {/* File Name */}
         <div>
-          <h3 className="text-sm font-semibold truncate group-hover:text-blue-600 transition-colors">
-            {file.name}
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold truncate group-hover:text-blue-600 transition-colors">
+              {file.name}
+            </h3>
+            {isPrivate && (
+              <Badge variant="secondary" className="text-xs px-2 py-0.5">
+                <Lock className="w-3 h-3 mr-1" />
+                Private
+              </Badge>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground mt-1">
             {formatFileSize(file.size)}
           </p>

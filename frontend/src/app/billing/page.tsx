@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/store/auth'
 import { billingService, Plan, Subscription, Usage } from '@/lib/api/billing'
@@ -36,16 +36,7 @@ export default function BillingPage() {
   const [usage, setUsage] = useState<Usage | null>(null)
   const [hasActiveSubscription, setHasActiveSubscription] = useState(false)
 
-  useEffect(() => {
-    setMounted(true)
-    if (!isAuthenticated()) {
-      router.push('/auth/login')
-      return
-    }
-    loadBillingData()
-  }, [isAuthenticated, router, user])
-
-  const loadBillingData = async () => {
+  const loadBillingData = useCallback(async () => {
     if (!user) return
     
     try {
@@ -139,7 +130,16 @@ export default function BillingPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [user])
+
+  useEffect(() => {
+    setMounted(true)
+    if (!isAuthenticated()) {
+      router.push('/auth/login')
+      return
+    }
+    loadBillingData()
+  }, [isAuthenticated, router, user, loadBillingData])
 
   const handleUpgrade = async (planId: string) => {
     if (!user) return

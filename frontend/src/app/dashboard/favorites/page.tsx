@@ -53,8 +53,7 @@ export default function FavoritesPage() {
   const handleDownload = async (fileId: string, fileName: string) => {
     if (!user) return
     try {
-      const { download_url } = await fileService.getDownloadUrl(fileId)
-      window.open(download_url, '_blank')
+      await fileService.downloadFile(fileId, fileName)
       
       addNotification({
         notification_id: Date.now().toString(),
@@ -67,6 +66,15 @@ export default function FavoritesPage() {
       })
     } catch (error) {
       console.error('Download failed:', error)
+      addNotification({
+        notification_id: Date.now().toString(),
+        user_id: user.userId,
+        type: 'error',
+        title: 'Download Failed',
+        body: `Failed to download "${fileName}"`,
+        is_read: false,
+        created_at: new Date().toISOString(),
+      })
     }
   }
 
