@@ -125,10 +125,29 @@ func main() {
 	// Kafka consumer is disabled for now
 	log.Info("Kafka consumer is disabled for this simplified version")
 
-	// Initialize MinIO storage
-	minioStorage, err := storage.NewMinioStorage(cfg.MinioEndpoint, cfg.MinioExternalEndpoint, cfg.MinioAccessKey, cfg.MinioSecretKey, cfg.MinioBucket, cfg.MinioUseSSL)
-	if err != nil {
-		log.Fatalf("Failed to initialize MinIO storage: %v", err)
+	// Initialize MinIO storage with retry logic
+	var minioStorage *storage.MinioStorage
+	var minioErr error
+
+	// Try to connect to MinIO with retries
+	for i := 0; i < 3; i++ {
+		minioStorage, minioErr = storage.NewMinioStorage(cfg.MinioEndpoint, cfg.MinioExternalEndpoint, cfg.MinioAccessKey, cfg.MinioSecretKey, cfg.MinioBucket, cfg.MinioUseSSL)
+		if minioErr == nil {
+			log.Info("MinIO storage initialized successfully")
+			break
+		}
+		log.Warnf("Failed to initialize MinIO storage (attempt %d/3): %v", i+1, minioErr)
+		if i < 2 {
+			log.Info("Retrying MinIO connection in 5 seconds...")
+			time.Sleep(5 * time.Second)
+		}
+	}
+
+	if minioErr != nil {
+		log.Warnf("Failed to initialize MinIO storage after 3 attempts: %v", minioErr)
+		log.Warn("File service will start without MinIO storage - file uploads will be disabled")
+		// Create a nil storage - the service will handle this gracefully
+		minioStorage = nil
 	}
 
 	// Initialize private folder repository
@@ -331,6 +350,163 @@ func startGRPCGateway(cfg *config.Config, log *logrus.Logger, redisCache *cache.
 	apiV1 := router.Group("/api/v1")
 	privateFolderHandlers := rest.NewPrivateFolderHandlers(privateFolderService, log)
 	privateFolderHandlers.RegisterRoutes(apiV1)
+
+	// Privacy endpoints
+	router.PATCH("/v1/files/:id/privacy", func(c *gin.Context) {
+		fileID := c.Param("id")
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
+			return
+		}
+
+		token := authHeader
+		if len(token) > 7 && token[:7] == "Bearer " {
+			token = token[7:]
+		}
+
+		jwtValidator := jwt.NewJWTValidator(cfg.JWTSecret)
+		userID, err := jwtValidator.ExtractUserID(token)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			return
+		}
+
+		var req struct {
+			IsPrivate  bool     `json:"is_private"`
+			SharedWith []string `json:"shared_with"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+			return
+		}
+
+		file, err := fileRepo.FindByID(c.Request.Context(), fileID)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+			return
+		}
+
+		if file.OwnerID != userID {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Only the file owner can change privacy settings"})
+			return
+		}
+
+		err = fileRepo.UpdateFilePrivacy(c.Request.Context(), fileID, userID, req.IsPrivate, req.SharedWith)
+		if err != nil {
+			log.WithError(err).Error("Failed to update file privacy")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update privacy settings"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"message":     "Privacy settings updated successfully",
+			"file_id":     fileID,
+			"is_private":  req.IsPrivate,
+			"shared_with": req.SharedWith,
+		})
+	})
+
+	router.POST("/v1/files/:id/share-private", func(c *gin.Context) {
+		fileID := c.Param("id")
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
+			return
+		}
+
+		token := authHeader
+		if len(token) > 7 && token[:7] == "Bearer " {
+			token = token[7:]
+		}
+
+		jwtValidator := jwt.NewJWTValidator(cfg.JWTSecret)
+		userID, err := jwtValidator.ExtractUserID(token)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			return
+		}
+
+		var req struct {
+			UserIDs []string `json:"user_ids"`
+			Action  string   `json:"action"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+			return
+		}
+
+		if req.Action != "add" && req.Action != "remove" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Action must be 'add' or 'remove'"})
+			return
+		}
+
+		file, err := fileRepo.FindByID(c.Request.Context(), fileID)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+			return
+		}
+
+		if file.OwnerID != userID {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Only the file owner can manage private access"})
+			return
+		}
+
+		err = fileRepo.ManagePrivateAccess(c.Request.Context(), fileID, userID, req.UserIDs, req.Action)
+		if err != nil {
+			log.WithError(err).Error("Failed to manage private access")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"message": fmt.Sprintf("Successfully %sed users to private file access", req.Action),
+			"file_id": fileID,
+			"action":  req.Action,
+			"users":   req.UserIDs,
+		})
+	})
+
+	router.GET("/v1/files/private", func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
+			return
+		}
+
+		token := authHeader
+		if len(token) > 7 && token[:7] == "Bearer " {
+			token = token[7:]
+		}
+
+		jwtValidator := jwt.NewJWTValidator(cfg.JWTSecret)
+		userID, err := jwtValidator.ExtractUserID(token)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			return
+		}
+
+		page := 1
+		limit := 20
+		// Parse query parameters...
+
+		files, total, err := fileRepo.ListPrivateFiles(c.Request.Context(), userID, page, limit)
+		if err != nil {
+			log.WithError(err).Error("Failed to list private files")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list private files"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"files": files,
+			"total": total,
+			"page":  page,
+			"limit": limit,
+		})
+	})
+
+	// Note: Private folder endpoints are registered via REST handlers at line 333
+	// No need to register them again here to avoid duplicate route panic
 
 	// Start HTTP server
 	httpAddr := fmt.Sprintf("%s:%s", cfg.ServiceHost, cfg.ServicePort)

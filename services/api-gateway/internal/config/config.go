@@ -30,7 +30,7 @@ func Load() *Config {
 		JWTSecret:               getEnv("JWT_SECRET", "your-super-secret-key-change-in-production"),
 		AuthServiceGRPC:         getEnv("AUTH_SERVICE_GRPC", "localhost:50051"),
 		FileServiceGRPC:         getEnv("FILE_SERVICE_GRPC", "localhost:50052"),
-		NotificationServiceGRPC: getEnv("NOTIFICATION_SERVICE_GRPC", "localhost:50053"),
+		NotificationServiceGRPC: getEnv("NOTIFICATION_SERVICE_GRPC", "localhost:50054"),
 		BillingServiceGRPC:      getEnv("BILLING_SERVICE_GRPC", "localhost:50054"),
 		CORSAllowedOrigins:      getCORSOrigins(),
 		RateLimitEnabled:        getEnv("RATE_LIMIT_ENABLED", "true") == "true",

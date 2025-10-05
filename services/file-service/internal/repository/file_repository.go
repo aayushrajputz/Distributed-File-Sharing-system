@@ -721,7 +721,8 @@ func (r *FileRepository) ManagePrivateAccess(ctx context.Context, fileID, ownerI
 
 	// Prepare update based on action
 	var update bson.M
-	if action == "add" {
+	switch action {
+	case "add":
 		update = bson.M{
 			"$addToSet": bson.M{
 				"shared_with": bson.M{"$each": userIDs},
@@ -730,7 +731,7 @@ func (r *FileRepository) ManagePrivateAccess(ctx context.Context, fileID, ownerI
 				"updated_at": time.Now(),
 			},
 		}
-	} else if action == "remove" {
+	case "remove":
 		update = bson.M{
 			"$pull": bson.M{
 				"shared_with": bson.M{"$in": userIDs},
@@ -739,7 +740,7 @@ func (r *FileRepository) ManagePrivateAccess(ctx context.Context, fileID, ownerI
 				"updated_at": time.Now(),
 			},
 		}
-	} else {
+	default:
 		return fmt.Errorf("invalid action: must be 'add' or 'remove'")
 	}
 

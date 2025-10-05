@@ -126,6 +126,8 @@ message File {
   FileStatus status = 9;
   google.protobuf.Timestamp created_at = 10;
   google.protobuf.Timestamp updated_at = 11;
+  bool is_private = 12;
+  repeated string shared_with = 13;
 }
 
 // FileStatus represents the status of a file
@@ -168,6 +170,7 @@ message UploadFileRequest {
   int64 size = 3;
   string mime_type = 4;
   string user_id = 5;
+  bool is_private = 6;
 }
 
 // UploadFileResponse contains upload information

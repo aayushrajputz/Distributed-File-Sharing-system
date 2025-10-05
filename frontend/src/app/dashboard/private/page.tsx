@@ -13,6 +13,7 @@ import { PremiumFileCard } from '@/components/PremiumFileCard'
 import { FileMetadata, fileService } from '@/lib/api/files'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/use-toast'
+import AccessManagementModal from '@/components/AccessManagementModal'
 
 export default function PrivateFilesPage() {
   const router = useRouter()
@@ -25,6 +26,8 @@ export default function PrivateFilesPage() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [downloadingFiles, setDownloadingFiles] = useState<{ [fileId: string]: { percentage: number; loaded: number; total: number; speed: number; estimatedTime: number } }>({})
+  const [selectedFile, setSelectedFile] = useState<FileMetadata | null>(null)
+  const [isAccessModalOpen, setIsAccessModalOpen] = useState(false)
 
   useEffect(() => {
     setMounted(true)
@@ -106,12 +109,15 @@ export default function PrivateFilesPage() {
   }
 
   const handleManageAccess = (fileId: string) => {
-    // TODO: Implement access management modal
-    console.log('Manage access:', fileId)
-    toast({
-      title: 'Coming Soon',
-      description: 'Access management modal will be implemented next.',
-    })
+    const file = privateFiles.find(f => f.id === fileId)
+    if (file) {
+      setSelectedFile(file)
+      setIsAccessModalOpen(true)
+    }
+  }
+
+  const handleAccessUpdated = () => {
+    loadPrivateFiles()
   }
 
   const filteredFiles = privateFiles.filter(file =>
@@ -253,6 +259,23 @@ export default function PrivateFilesPage() {
           )}
         </div>
       </main>
+
+      {/* Access Management Modal */}
+      {selectedFile && (
+        <AccessManagementModal
+          isOpen={isAccessModalOpen}
+          onClose={() => {
+            setIsAccessModalOpen(false)
+            setSelectedFile(null)
+          }}
+          file={{
+            id: selectedFile.id,
+            name: selectedFile.name,
+            shared_with: selectedFile.shared_with || [],
+          }}
+          onAccessUpdated={handleAccessUpdated}
+        />
+      )}
     </div>
   )
 }

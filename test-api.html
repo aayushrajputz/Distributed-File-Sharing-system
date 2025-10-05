@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Gateway Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 30px;
+            backdrop-filter: blur(10px);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .test-section {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        .result {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 15px;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .success {
+            color: #4CAF50;
+        }
+        .error {
+            color: #f44336;
+        }
+        .status {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            margin-left: 10px;
+            font-size: 14px;
+        }
+        .status.online {
+            background: #4CAF50;
+        }
+        .status.offline {
+            background: #f44336;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 API Gateway Connection Test</h1>
+        
+        <div class="test-section">
+            <h2>Test 1: API Gateway Health Check</h2>
+            <p>This will test if the API gateway is accessible from your browser.</p>
+            <button onclick="testHealth()">Test Health Endpoint</button>
+            <div id="health-result" class="result" style="display:none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>Test 2: Frontend Connection</h2>
+            <p>Check if the frontend can reach the API gateway.</p>
+            <button onclick="testFrontend()">Test Frontend</button>
+            <div id="frontend-result" class="result" style="display:none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>Test 3: All Services Status</h2>
+            <p>Quick overview of all service endpoints.</p>
+            <button onclick="testAllServices()">Test All Services</button>
+            <div id="services-result" class="result" style="display:none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>📋 Service URLs</h2>
+            <ul>
+                <li><strong>Frontend:</strong> <a href="http://localhost:3000" target="_blank" style="color: #4CAF50;">http://localhost:3000</a></li>
+                <li><strong>API Gateway:</strong> <a href="http://localhost:8080/health" target="_blank" style="color: #4CAF50;">http://localhost:8080/health</a></li>
+                <li><strong>Auth Service:</strong> http://localhost:8081</li>
+                <li><strong>File Service:</strong> http://localhost:8082</li>
+                <li><strong>MinIO Console:</strong> <a href="http://localhost:9001" target="_blank" style="color: #4CAF50;">http://localhost:9001</a></li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        async function testHealth() {
+            const resultDiv = document.getElementById('health-result');
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = '⏳ Testing API Gateway health endpoint...';
+            
+            try {
+                const response = await fetch('http://localhost:8080/health');
+                const data = await response.json();
+                
+                resultDiv.innerHTML = `<span class="success">✅ SUCCESS!</span>\n\nStatus: ${response.status}\nResponse:\n${JSON.stringify(data, null, 2)}`;
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">❌ ERROR!</span>\n\n${error.message}\n\nThis means the browser cannot reach the API gateway.\nPlease check Docker Desktop is running and all containers are up.`;
+            }
+        }
+
+        async function testFrontend() {
+            const resultDiv = document.getElementById('frontend-result');
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = '⏳ Testing frontend connection...';
+            
+            try {
+                const response = await fetch('http://localhost:3000');
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `<span class="success">✅ SUCCESS!</span>\n\nFrontend is accessible!\nStatus: ${response.status}\n\nYou can access the application at:\nhttp://localhost:3000`;
+                } else {
+                    resultDiv.innerHTML = `<span class="error">⚠️ WARNING!</span>\n\nFrontend returned status: ${response.status}`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">❌ ERROR!</span>\n\n${error.message}\n\nFrontend is not accessible.`;
+            }
+        }
+
+        async function testAllServices() {
+            const resultDiv = document.getElementById('services-result');
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = '⏳ Testing all services...';
+            
+            const services = [
+                { name: 'API Gateway', url: 'http://localhost:8080/health' },
+                { name: 'Frontend', url: 'http://localhost:3000' },
+                { name: 'Auth Service', url: 'http://localhost:8081/health' },
+                { name: 'File Service', url: 'http://localhost:8082/health' }
+            ];
+            
+            let results = '<span class="success">Service Status:</span>\n\n';
+            
+            for (const service of services) {
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 5000);
+                    
+                    const response = await fetch(service.url, { 
+                        signal: controller.signal,
+                        mode: 'cors'
+                    });
+                    clearTimeout(timeoutId);
+                    
+                    results += `✅ ${service.name}: <span class="success">ONLINE</span> (${response.status})\n`;
+                } catch (error) {
+                    results += `❌ ${service.name}: <span class="error">OFFLINE</span> (${error.message})\n`;
+                }
+            }
+            
+            results += '\n💡 Tip: If services show as OFFLINE, it might be a CORS issue or Docker networking problem.';
+            results += '\nTry accessing the URLs directly in your browser.';
+            
+            resultDiv.innerHTML = results;
+        }
+
+        // Auto-test on page load
+        window.addEventListener('load', () => {
+            setTimeout(testHealth, 1000);
+        });
+    </script>
+</body>
+</html>
+

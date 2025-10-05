@@ -82,3 +82,4 @@ ALTER TABLE files ADD COLUMN private_folder_id VARCHAR(24) NULL;
 ALTER TABLE files ADD INDEX idx_is_private (is_private);
 ALTER TABLE files ADD INDEX idx_private_folder_id (private_folder_id);
 
+

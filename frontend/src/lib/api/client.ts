@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 
 export const apiGatewayUrl = process.env.NEXT_PUBLIC_API_GATEWAY_URL || 'http://localhost:8080';
+// Use API Gateway for all requests
 const authServiceUrl = `${apiGatewayUrl}/api/v1/auth`;
 const fileServiceUrl = `${apiGatewayUrl}/api/v1/files`;
 const notificationServiceUrl = `${apiGatewayUrl}/api/v1/notifications`;

@@ -124,7 +124,7 @@ export function PremiumHeader({
               className="flex items-center space-x-3 h-10 px-3 rounded-xl hover:bg-muted/50 transition-all"
             >
               <Avatar className="h-8 w-8 ring-2 ring-blue-600/20">
-                <AvatarImage src={user?.avatarUrl || ''} alt={user?.fullName || 'User'} />
+                {user?.avatarUrl && <AvatarImage src={user.avatarUrl} alt={user?.fullName || 'User'} />}
                 <AvatarFallback className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-semibold">
                   {user?.fullName?.charAt(0) || 'U'}
                 </AvatarFallback>
@@ -143,7 +143,7 @@ export function PremiumHeader({
                 <div className="p-4 border-b border-border/40 bg-gradient-to-r from-blue-600/10 to-indigo-600/10">
                   <div className="flex items-center space-x-3">
                     <Avatar className="h-12 w-12 ring-2 ring-blue-600/20">
-                      <AvatarImage src={user?.avatarUrl || ''} alt={user?.fullName || 'User'} />
+                      {user?.avatarUrl && <AvatarImage src={user.avatarUrl} alt={user?.fullName || 'User'} />}
                       <AvatarFallback className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold">
                         {user?.fullName?.charAt(0) || 'U'}
                       </AvatarFallback>

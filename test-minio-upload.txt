@@ -1,0 +1,1 @@
+﻿MinIO functionality test - This file was uploaded successfully!

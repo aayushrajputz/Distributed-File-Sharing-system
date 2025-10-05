@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/yourusername/distributed-file-sharing/services/file-service/internal/models"
@@ -173,22 +174,29 @@ func (r *StorageRepository) CalculateUsageFromFiles(ctx context.Context, userID 
 	// Get all files for the user
 	files, _, err := fileRepo.FindByOwner(ctx, userID, 1, 10000) // Get up to 10k files
 	if err != nil {
+		log.Printf("Error finding files for user %s: %v", userID, err)
 		return nil, err
 	}
+
+	log.Printf("Found %d files for user %s", len(files), userID)
 
 	var totalBytes int64
 	var fileCount int64
 
 	for _, file := range files {
+		log.Printf("File: %s, Size: %d, Status: %s", file.Name, file.Size, file.Status)
 		if file.Status == models.FileStatusAvailable {
 			totalBytes += file.Size
 			fileCount++
 		}
 	}
 
+	log.Printf("Calculated storage for user %s: %d bytes, %d files", userID, totalBytes, fileCount)
+
 	// Get or create storage stats
 	stats, err := r.GetOrCreate(ctx, userID)
 	if err != nil {
+		log.Printf("Error getting/creating storage stats for user %s: %v", userID, err)
 		return nil, err
 	}
 

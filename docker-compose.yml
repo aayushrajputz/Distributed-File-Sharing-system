@@ -82,12 +82,14 @@ services:
     image: minio/minio:latest
     container_name: minio
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "0.0.0.0:9000:9000"
+      - "0.0.0.0:9001:9001"
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
-    command: server /data --console-address ":9001"
+      MINIO_SERVER_URL: http://localhost:9000
+      MINIO_BROWSER_REDIRECT_URL: http://localhost:9001
+    command: server /data --console-address ":9001" --address ":9000"
     volumes:
       - minio_data:/data
     networks:
@@ -154,8 +156,8 @@ services:
       dockerfile: Dockerfile
     container_name: auth-service
     ports:
-      - "0.0.0.0:8081:8081"
-      - "0.0.0.0:50051:50051"
+      - "8081:8081"
+      - "50051:50051"
     environment:
       AUTH_SERVICE_PORT: 8081
       AUTH_GRPC_PORT: 50051
@@ -181,8 +183,8 @@ services:
       dockerfile: Dockerfile
     container_name: file-service
     ports:
-      - "0.0.0.0:8082:8082"
-      - "0.0.0.0:50052:50052"
+      - "8082:8082"
+      - "50052:50052"
     environment:
       FILE_SERVICE_PORT: 8082
       FILE_GRPC_PORT: 50052
@@ -242,10 +244,10 @@ services:
       dockerfile: Dockerfile
     container_name: notification-service
     ports:
-      - "0.0.0.0:8084:8084"  # REST API
-      - "0.0.0.0:8085:8085"  # WebSocket
-      - "0.0.0.0:9095:9095"  # Metrics (changed from 9094 to avoid conflict with Kafka)
-      - "0.0.0.0:50054:50054" # gRPC
+      - "8084:8084"  # REST API
+      - "8085:8085"  # WebSocket
+      - "9095:9095"  # Metrics (changed from 9094 to avoid conflict with Kafka)
+      - "50054:50054" # gRPC
     environment:
       # Service Configuration
       NOTIFICATION_SERVICE_PORT: 8084
@@ -398,7 +400,7 @@ services:
       dockerfile: Dockerfile
     container_name: api-gateway
     ports:
-      - "0.0.0.0:8080:8080"
+      - "8080:8080"
     environment:
       GATEWAY_PORT: 8080
       ENVIRONMENT: production
@@ -408,7 +410,8 @@ services:
       FILE_SERVICE_GRPC: file-service:50052
       NOTIFICATION_SERVICE_GRPC: notification-service:50054
       BILLING_SERVICE_GRPC: billing-service:50055
-      CORS_ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:8080
+      SHARE_TRACKER_SERVICE_GRPC: share-tracker:50057
+      CORS_ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:8080,http://127.0.0.1:3000,http://127.0.0.1:3001,http://127.0.0.1:8080
       RATE_LIMIT_ENABLED: true
       RATE_LIMIT_REQUESTS: 100
       RATE_LIMIT_DURATION: 60
@@ -417,6 +420,7 @@ services:
       - file-service
       - notification-service
       - billing-service
+      - share-tracker
     networks:
       - app-network
     restart: unless-stopped
@@ -427,11 +431,16 @@ services:
       context: ./services/share-tracker
       dockerfile: Dockerfile
     container_name: share-tracker
+    ports:
+      - "8087:8087"
+      - "50057:50057"
     environment:
       KAFKA_BROKERS: kafka:9092
       KAFKA_TOPIC: file-events
       KAFKA_GROUP_ID: share-tracker-group
       LOG_LEVEL: info
+      SHARE_TRACKER_SERVICE_PORT: 8087
+      SHARE_TRACKER_GRPC_PORT: 50057
     volumes:
       - ./SharedFiles:/app/SharedFiles
     depends_on:
@@ -447,11 +456,12 @@ services:
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     container_name: frontend
     ports:
-      - "3000:3000"
+      - "3002:3000"
     environment:
+      NODE_ENV: development
       NEXT_PUBLIC_API_GATEWAY_URL: http://localhost:8080
       NEXT_PUBLIC_API_BASE_URL: http://localhost:8080/api
       NEXT_PUBLIC_AUTH_SERVICE_URL: http://localhost:8081/api/v1

@@ -5,18 +5,18 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"github.com/yourusername/distributed-file-sharing/services/notification-service/internal/channels"
 	"github.com/yourusername/distributed-file-sharing/services/notification-service/internal/models"
 	"github.com/yourusername/distributed-file-sharing/services/notification-service/internal/repository"
-	"github.com/sirupsen/logrus"
 )
 
 // NotificationService handles multi-channel notification logic
 type NotificationService struct {
-	notifRepo        *repository.NotificationRepository
-	preferencesRepo  *repository.UserPreferencesRepository
-	channelManager   channels.ChannelManager
-	logger           *logrus.Logger
+	notifRepo       *repository.NotificationRepository
+	preferencesRepo *repository.UserPreferencesRepository
+	channelManager  channels.ChannelManager
+	logger          *logrus.Logger
 }
 
 // NewNotificationService creates a new notification service
@@ -180,17 +180,6 @@ func (s *NotificationService) enrichRequestWithUserData(req *channels.Notificati
 
 // createNotificationFromRequest creates a notification model from request
 func (s *NotificationService) createNotificationFromRequest(req *channels.NotificationRequest, results []*channels.DeliveryResult) *models.Notification {
-	// Convert delivery results
-	deliveryResults := make([]models.DeliveryResult, len(results))
-	for i, result := range results {
-		deliveryResults[i] = models.DeliveryResult{
-			Channel:      result.Channel,
-			Success:      result.Success,
-			ErrorMessage: result.ErrorMessage,
-			DeliveredAt:  result.DeliveredAt,
-			MessageID:    result.MessageID,
-		}
-	}
 
 	// Convert map[string]string to map[string]interface{}
 	metadata := make(map[string]interface{})
@@ -199,16 +188,16 @@ func (s *NotificationService) createNotificationFromRequest(req *channels.Notifi
 	}
 
 	return &models.Notification{
-		UserID:     req.UserID,
-		EventType:  models.EventType(req.Type),
-		Channel:    models.NotificationChannel(req.Channels[0]), // Use first channel as primary
-		Title:      req.Title,
-		Message:    req.Body,
-		Priority:   models.Priority(req.Priority),
-		Metadata:   metadata,
-		Status:     models.StatusPending,
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		UserID:    req.UserID,
+		EventType: models.EventType(req.Type),
+		Channel:   models.NotificationChannel(req.Channels[0]), // Use first channel as primary
+		Title:     req.Title,
+		Message:   req.Body,
+		Priority:  models.Priority(req.Priority),
+		Metadata:  metadata,
+		Status:    models.StatusPending,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 }
 

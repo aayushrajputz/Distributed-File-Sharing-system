@@ -30,6 +30,7 @@ const getUserId = (): string => {
 };
 
 export interface FileMetadata {
+  id: string;
   file_id: string;
   name: string;
   description?: string;
@@ -41,6 +42,8 @@ export interface FileMetadata {
   status: string;
   created_at: string;
   updated_at: string;
+  is_private?: boolean;
+  shared_with?: string[];
 }
 
 export interface UploadFileRequest {
@@ -48,6 +51,7 @@ export interface UploadFileRequest {
   description?: string;
   size: number;
   mime_type: string;
+  is_private?: boolean;
 }
 
 export interface FileShare {

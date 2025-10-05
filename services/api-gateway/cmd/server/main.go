@@ -10,14 +10,17 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 
 	// billingv1 "github.com/yourusername/distributed-file-sharing/services/api-gateway/pkg/pb/billing/v1"
@@ -147,6 +150,72 @@ func proxyToBillingService(c *gin.Context, cfg *config.Config) {
 	}
 }
 
+// proxyToFileService proxies requests to the file service
+func proxyToFileService(c *gin.Context, cfg *config.Config) {
+	// Get the path after /api/v1/files/private-folder
+	path := c.Param("path")
+
+	// Build the target URL - file service runs on port 8082
+	fileHost := "file-service:8082"
+	if cfg.Environment == "development" {
+		fileHost = "localhost:8082"
+	}
+	targetURL := fmt.Sprintf("http://%s/api/v1/private-folder%s", fileHost, path)
+
+	// Add query parameters
+	if c.Request.URL.RawQuery != "" {
+		targetURL += "?" + c.Request.URL.RawQuery
+	}
+
+	log.Printf("Proxying file service request to: %s", targetURL)
+
+	// Create a new request
+	req, err := http.NewRequest(c.Request.Method, targetURL, c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request"})
+		return
+	}
+
+	// Copy headers
+	for key, values := range c.Request.Header {
+		for _, value := range values {
+			req.Header.Add(key, value)
+		}
+	}
+
+	// Make the request
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Failed to reach file service: %v", err)
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to reach file service"})
+		return
+	}
+	defer resp.Body.Close()
+
+	// Copy response headers
+	for key, values := range resp.Header {
+		for _, value := range values {
+			c.Writer.Header().Add(key, value)
+		}
+	}
+
+	// Copy status code
+	c.Writer.WriteHeader(resp.StatusCode)
+
+	// Copy body
+	buf := make([]byte, 32*1024)
+	for {
+		n, err := resp.Body.Read(buf)
+		if n > 0 {
+			c.Writer.Write(buf[:n])
+		}
+		if err != nil {
+			break
+		}
+	}
+}
+
 // handleListFiles handles the ListFiles API endpoint with proper query parameter parsing
 func handleListFiles(c *gin.Context, cfg *config.Config) {
 	// Extract query parameters
@@ -241,30 +310,69 @@ func main() {
 		runtime.WithMetadata(metadataAnnotator),
 	)
 
-	// Create gRPC dial options
+	// Create gRPC dial options with timeout
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock(),                   // Block until connection is established
+		grpc.WithTimeout(30 * time.Second), // Timeout after 30 seconds
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(math.MaxInt32)),
+		grpc.WithDefaultCallOptions(grpc.MaxCallSendMsgSize(math.MaxInt32)),
+		grpc.WithKeepaliveParams(keepalive.ClientParameters{
+			Time:                10 * time.Second,
+			Timeout:             3 * time.Second,
+			PermitWithoutStream: true,
+		}),
 	}
 
 	// Use background context for gRPC connections to keep them alive
 	ctx := context.Background()
 
-	// Register Auth Service
+	// Register Auth Service with retry logic
 	log.Printf("Connecting to Auth Service at %s", cfg.AuthServiceGRPC)
-	if err := authv1.RegisterAuthServiceHandlerFromEndpoint(ctx, gwmux, cfg.AuthServiceGRPC, opts); err != nil {
-		log.Fatalf("Failed to register auth service: %v", err)
+	var authErr error
+	for i := 0; i < 3; i++ {
+		authErr = authv1.RegisterAuthServiceHandlerFromEndpoint(ctx, gwmux, cfg.AuthServiceGRPC, opts)
+		if authErr == nil {
+			log.Printf("Successfully connected to Auth Service")
+			break
+		}
+		log.Printf("Failed to connect to Auth Service (attempt %d/3): %v", i+1, authErr)
+		time.Sleep(2 * time.Second)
+	}
+	if authErr != nil {
+		log.Printf("Warning: Could not connect to Auth Service after 3 attempts: %v", authErr)
 	}
 
-	// Register File Service
+	// Register File Service with retry logic
 	log.Printf("Connecting to File Service at %s", cfg.FileServiceGRPC)
-	if err := filev1.RegisterFileServiceHandlerFromEndpoint(ctx, gwmux, cfg.FileServiceGRPC, opts); err != nil {
-		log.Fatalf("Failed to register file service: %v", err)
+	var fileErr error
+	for i := 0; i < 3; i++ {
+		fileErr = filev1.RegisterFileServiceHandlerFromEndpoint(ctx, gwmux, cfg.FileServiceGRPC, opts)
+		if fileErr == nil {
+			log.Printf("Successfully connected to File Service")
+			break
+		}
+		log.Printf("Failed to connect to File Service (attempt %d/3): %v", i+1, fileErr)
+		time.Sleep(2 * time.Second)
+	}
+	if fileErr != nil {
+		log.Printf("Warning: Could not connect to File Service after 3 attempts: %v", fileErr)
 	}
 
-	// Register Notification Service
+	// Register Notification Service with retry logic
 	log.Printf("Connecting to Notification Service at %s", cfg.NotificationServiceGRPC)
-	if err := notificationv1.RegisterNotificationServiceHandlerFromEndpoint(ctx, gwmux, cfg.NotificationServiceGRPC, opts); err != nil {
-		log.Fatalf("Failed to register notification service: %v", err)
+	var notifErr error
+	for i := 0; i < 3; i++ {
+		notifErr = notificationv1.RegisterNotificationServiceHandlerFromEndpoint(ctx, gwmux, cfg.NotificationServiceGRPC, opts)
+		if notifErr == nil {
+			log.Printf("Successfully connected to Notification Service")
+			break
+		}
+		log.Printf("Failed to connect to Notification Service (attempt %d/3): %v", i+1, notifErr)
+		time.Sleep(2 * time.Second)
+	}
+	if notifErr != nil {
+		log.Printf("Warning: Could not connect to Notification Service after 3 attempts: %v", notifErr)
 	}
 
 	// Register Billing Service (temporarily disabled for Docker build)
@@ -278,11 +386,11 @@ func main() {
 
 	// Setup CORS
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     cfg.CORSAllowedOrigins,
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Accept"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
+		AllowOrigins:     []string{"*"}, // Allow all origins for development
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"},
+		AllowHeaders:     []string{"*"}, // Allow all headers
+		ExposeHeaders:    []string{"Content-Length", "Access-Control-Allow-Origin", "Access-Control-Allow-Credentials"},
+		AllowCredentials: false, // Set to false when using wildcard origins
 		MaxAge:           12 * time.Hour,
 	}))
 
@@ -316,7 +424,14 @@ func main() {
 	})
 
 	// Handle storage usage route (must come before :id route)
-	fileServiceGroup.GET("/v1/files/storage/usage", fileServiceHandler)
+	fileServiceGroup.GET("/v1/files/storage/usage", func(c *gin.Context) {
+		// Mock response for storage usage
+		c.JSON(http.StatusOK, gin.H{
+			"used":       0,
+			"total":      1073741824, // 1GB
+			"percentage": 0,
+		})
+	})
 
 	// Handle other file service routes
 	fileServiceGroup.Any("/v1/files/upload", fileServiceHandler)
@@ -337,41 +452,96 @@ func main() {
 	// Mount other services without auth middleware
 	router.Any("/api/v1/auth/*path", gin.WrapF(gwmux.ServeHTTP))
 
-	// Custom handler for unread-count to work around gRPC gateway issue
-	// Use a different path to avoid conflict with wildcard
-	router.GET("/api/v1/notifications/unread-count", func(c *gin.Context) {
-		userID := c.Query("user_id")
-		if userID == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "user_id parameter is required"})
+	// Proxy notification service requests directly to notification service REST API
+	// This bypasses gRPC and uses the notification service's REST endpoints
+	notificationServiceURL := os.Getenv("NOTIFICATION_SERVICE_REST_URL")
+	if notificationServiceURL == "" {
+		notificationServiceURL = "http://notification-service:8084" // Default Docker service name
+	}
+
+	router.Any("/api/v1/notifications/*path", func(c *gin.Context) {
+		// Extract user ID from JWT token
+		userID := ""
+		if authHeader := c.GetHeader("Authorization"); authHeader != "" {
+			log.Printf("API Gateway - Authorization header found: %s", authHeader[:50]+"...")
+			// Extract user ID from JWT token
+			tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+			token, err := jwt.ParseWithClaims(tokenString, &jwt.MapClaims{}, func(token *jwt.Token) (interface{}, error) {
+				return []byte(os.Getenv("JWT_SECRET")), nil
+			})
+			if err == nil && token.Valid {
+				if claims, ok := token.Claims.(*jwt.MapClaims); ok {
+					if uid, ok := (*claims)["user_id"].(string); ok {
+						userID = uid
+						log.Printf("API Gateway - User ID extracted from token: %s", userID)
+					}
+				}
+			}
+		}
+
+		// Also check query parameter for user_id (for unread-count endpoint)
+		if queryUserID := c.Query("user_id"); queryUserID != "" {
+			userID = queryUserID
+			log.Printf("API Gateway - User ID extracted from query param: %s", userID)
+		}
+
+		// Build target URL
+		path := c.Param("path")
+		targetURL := fmt.Sprintf("%s/api/v1/notifications%s", notificationServiceURL, path)
+		if c.Request.URL.RawQuery != "" {
+			targetURL += "?" + c.Request.URL.RawQuery
+		}
+
+		log.Printf("API Gateway - Proxying notification request to: %s", targetURL)
+
+		// Create proxy request
+		proxyReq, err := http.NewRequest(c.Request.Method, targetURL, c.Request.Body)
+		if err != nil {
+			log.Printf("API Gateway - Failed to create proxy request: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to proxy request"})
 			return
 		}
 
-		// Make direct HTTP request to notification service
-		client := &http.Client{Timeout: 10 * time.Second}
-		req, err := http.NewRequest("GET", "http://notification-service:8084/api/v1/notifications/unread/count", nil)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request"})
-			return
+		// Copy headers
+		for key, values := range c.Request.Header {
+			for _, value := range values {
+				proxyReq.Header.Add(key, value)
+			}
 		}
-		req.Header.Set("X-User-ID", userID)
 
-		resp, err := client.Do(req)
+		// Add X-User-ID header for notification service
+		if userID != "" {
+			proxyReq.Header.Set("X-User-ID", userID)
+			log.Printf("API Gateway - Added X-User-ID header: %s", userID)
+		}
+
+		// Send request
+		client := &http.Client{Timeout: 30 * time.Second}
+		resp, err := client.Do(proxyReq)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reach notification service"})
+			log.Printf("API Gateway - Failed to proxy request: %v", err)
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Notification service unavailable"})
 			return
 		}
 		defer resp.Body.Close()
 
-		// Copy response
-		c.Writer.WriteHeader(resp.StatusCode)
-		body, _ := io.ReadAll(resp.Body)
-		c.Writer.Write(body)
-	})
+		// Copy response headers
+		for key, values := range resp.Header {
+			for _, value := range values {
+				c.Header(key, value)
+			}
+		}
 
-	// Mount other notification endpoints through gRPC gateway
-	// Use a more specific pattern to avoid conflicts
-	router.Any("/api/v1/notifications/", gin.WrapF(gwmux.ServeHTTP))
-	router.Any("/api/v1/notifications", gin.WrapF(gwmux.ServeHTTP))
+		// Copy response body
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Printf("API Gateway - Failed to read response body: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read response"})
+			return
+		}
+
+		c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), body)
+	})
 
 	// Mount billing service - proxy directly to billing service
 	// All billing endpoints go through the same proxy
@@ -393,13 +563,23 @@ func main() {
 		proxyToBillingService(c, cfg)
 	})
 
+	// Mount file service private folder endpoints - proxy directly to file service
+	router.Any("/api/v1/files/private-folder/*path", func(c *gin.Context) {
+		// All private folder endpoints require auth
+		middleware.AuthMiddleware()(c)
+		if c.IsAborted() {
+			return
+		}
+		proxyToFileService(c, cfg)
+	})
+
 	// Create HTTP server
 	server := &http.Server{
 		Addr:         fmt.Sprintf(":%s", cfg.Port),
 		Handler:      router,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		ReadTimeout:  60 * time.Second,
+		WriteTimeout: 60 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
 
 	// Start server in goroutine

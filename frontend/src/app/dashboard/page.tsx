@@ -220,13 +220,13 @@ export default function DashboardPage() {
       const storageData = await storageService.getStorageUsage()
       const totalFileSize = Array.from(files).reduce((total, file) => total + file.size, 0)
       
-      if (storageData.used_bytes + totalFileSize > storageData.quota_bytes) {
+      if (storageData && storageData.used_bytes + totalFileSize > storageData.quota_bytes) {
         addNotification({
           notification_id: Date.now().toString(),
           user_id: user?.userId || '',
           type: 'error',
           title: 'Storage Quota Exceeded',
-          body: `Upload would exceed your storage quota. You have ${(storageData.quota_bytes - storageData.used_bytes) / (1024 * 1024 * 1024)} GB remaining.`,
+          body: `Upload would exceed your storage quota. You have ${storageData ? (storageData.quota_bytes - storageData.used_bytes) / (1024 * 1024 * 1024) : 100} GB remaining.`,
           is_read: false,
           created_at: new Date().toISOString(),
         })
@@ -564,10 +564,10 @@ export default function DashboardPage() {
                   <div>
                     <p className="text-sm font-medium text-muted-foreground mb-1">Storage Used</p>
                     <h3 className="text-3xl font-bold">
-                      {storageData ? `${storageData.used_gb.toFixed(1)} GB` : '0.0 GB'}
+                      {storageData?.used_gb ? `${storageData.used_gb.toFixed(1)} GB` : '0.0 GB'}
                     </h3>
                     <p className="text-xs text-muted-foreground mt-1">
-                      of {storageData ? `${storageData.quota_gb.toFixed(0)} GB` : '100 GB'} ({storageData ? storageData.usage_percentage.toFixed(0) : 0}%)
+                      of {storageData?.quota_gb ? `${storageData.quota_gb.toFixed(0)} GB` : '100 GB'} ({storageData?.usage_percentage ? storageData.usage_percentage.toFixed(0) : 0}%)
                     </p>
                   </div>
                   <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 flex items-center justify-center">

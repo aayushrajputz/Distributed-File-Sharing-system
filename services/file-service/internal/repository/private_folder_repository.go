@@ -103,7 +103,7 @@ func (r *PrivateFolderRepository) GetAccessLogs(ctx context.Context, userID stri
 
 	filter := bson.M{"user_id": userID}
 	opts := options.Find().
-		SetSort(bson.D{{"created_at", -1}}).
+		SetSort(bson.D{{Key: "created_at", Value: -1}}).
 		SetLimit(limit)
 
 	cursor, err := accessLogsCollection.Find(ctx, filter, opts)
@@ -154,7 +154,7 @@ func (r *PrivateFolderRepository) GetPrivateFiles(ctx context.Context, userID st
 	// Get private file IDs
 	filter := bson.M{"user_id": userID, "is_private": true}
 	opts := options.Find().
-		SetSort(bson.D{{"moved_at", -1}}).
+		SetSort(bson.D{{Key: "moved_at", Value: -1}}).
 		SetSkip(offset).
 		SetLimit(limit)
 
