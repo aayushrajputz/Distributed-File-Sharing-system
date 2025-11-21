@@ -249,8 +249,8 @@ Build-Services
 Start-Services
 
 Write-Host "`n=== Usage ===" -ForegroundColor Green
-Write-Host "To view logs: .\build-and-run.ps1 -Logs" -ForegroundColor Cyan
-Write-Host "To stop services: .\build-and-run.ps1 -Stop" -ForegroundColor Cyan
-Write-Host "To clean environment: .\build-and-run.ps1 -Clean" -ForegroundColor Cyan
-Write-Host "To build only: .\build-and-run.ps1 -BuildOnly" -ForegroundColor Cyan
-Write-Host "To run only: .\build-and-run.ps1 -RunOnly" -ForegroundColor Cyan
+Write-Host "To view logs: .\start-all.ps1 -Logs" -ForegroundColor Cyan
+Write-Host "To stop services: .\start-all.ps1 -Stop" -ForegroundColor Cyan
+Write-Host "To clean environment: .\start-all.ps1 -Clean" -ForegroundColor Cyan
+Write-Host "To build only: .\start-all.ps1 -BuildOnly" -ForegroundColor Cyan
+Write-Host "To run only: .\start-all.ps1 -RunOnly" -ForegroundColor Cyan

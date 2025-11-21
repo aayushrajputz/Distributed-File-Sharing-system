@@ -56,7 +56,12 @@ func (r *NotificationRepository) GetByID(ctx context.Context, id string) (*model
 
 // GetByUserID gets notifications for a user with pagination
 func (r *NotificationRepository) GetByUserID(ctx context.Context, userID string, page, limit int, status *models.NotificationStatus, eventType *models.EventType) ([]*models.Notification, int64, error) {
-	filter := bson.M{"user_id": userID}
+	// Handle both string and ObjectId user_id
+	userIDs := []interface{}{userID}
+	if objID, err := primitive.ObjectIDFromHex(userID); err == nil {
+		userIDs = append(userIDs, objID)
+	}
+	filter := bson.M{"user_id": bson.M{"$in": userIDs}}
 
 	if status != nil {
 		filter["status"] = *status
@@ -97,8 +102,14 @@ func (r *NotificationRepository) GetByUserID(ctx context.Context, userID string,
 
 // GetUnreadCount gets the count of unread notifications for a user
 func (r *NotificationRepository) GetUnreadCount(ctx context.Context, userID string) (int64, error) {
+	// Handle both string and ObjectId user_id
+	userIDs := []interface{}{userID}
+	if objID, err := primitive.ObjectIDFromHex(userID); err == nil {
+		userIDs = append(userIDs, objID)
+	}
+
 	filter := bson.M{
-		"user_id": userID,
+		"user_id": bson.M{"$in": userIDs},
 		"$or": []bson.M{
 			{"status": bson.M{"$ne": models.StatusRead}},
 			{"read_at": bson.M{"$exists": false}},

@@ -89,10 +89,10 @@ func proxyToBillingService(c *gin.Context, cfg *config.Config) {
 	// Get the path after /api/v1/billing
 	path := c.Param("path")
 
-	// Build the target URL - billing service runs on port 8084
-	billingHost := "billing-service:8084"
+	// Build the target URL - billing service runs on port 8086
+	billingHost := "billing-service:8086"
 	if cfg.Environment == "development" {
-		billingHost = "localhost:8084"
+		billingHost = "localhost:8086"
 	}
 	targetURL := fmt.Sprintf("http://%s/api/v1/billing%s", billingHost, path)
 
@@ -129,6 +129,9 @@ func proxyToBillingService(c *gin.Context, cfg *config.Config) {
 
 	// Copy response headers
 	for key, values := range resp.Header {
+		if isCORSHeader(key) {
+			continue
+		}
 		for _, value := range values {
 			c.Writer.Header().Add(key, value)
 		}
@@ -195,6 +198,9 @@ func proxyToFileService(c *gin.Context, cfg *config.Config) {
 
 	// Copy response headers
 	for key, values := range resp.Header {
+		if isCORSHeader(key) {
+			continue
+		}
 		for _, value := range values {
 			c.Writer.Header().Add(key, value)
 		}
@@ -439,7 +445,69 @@ func main() {
 	fileServiceGroup.Any("/v1/files/favorites", fileServiceHandler)
 	fileServiceGroup.Any("/v1/files/trash", fileServiceHandler)
 	fileServiceGroup.Any("/v1/files/:id/complete", fileServiceHandler)
-	fileServiceGroup.Any("/v1/files/:id/download", fileServiceHandler)
+	
+	// Special handler for file download - proxy directly to file service REST API to stream file content
+	fileServiceGroup.GET("/v1/files/:id/download", func(c *gin.Context) {
+		fileID := c.Param("id")
+		
+		// Build target URL - file service runs on port 8082
+		fileHost := "file-service:8082"
+		if cfg.Environment == "development" {
+			fileHost = "localhost:8082"
+		}
+		targetURL := fmt.Sprintf("http://%s/api/v1/files/%s/download", fileHost, fileID)
+		
+		log.Printf("Proxying file download to: %s", targetURL)
+		
+		// Create proxy request
+		req, err := http.NewRequest("GET", targetURL, nil)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request"})
+			return
+		}
+		
+		// Copy all headers from original request
+		for key, values := range c.Request.Header {
+			for _, value := range values {
+				req.Header.Add(key, value)
+			}
+		}
+		
+		// Send request to file service
+		client := &http.Client{Timeout: 60 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("Failed to proxy download request: %v", err)
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to reach file service"})
+			return
+		}
+		defer resp.Body.Close()
+		
+		// Copy all response headers
+		for key, values := range resp.Header {
+			if isCORSHeader(key) {
+				continue
+			}
+			for _, value := range values {
+				c.Writer.Header().Add(key, value)
+			}
+		}
+		
+		// Set status code
+		c.Writer.WriteHeader(resp.StatusCode)
+		
+		// Log response details
+		contentLength := resp.Header.Get("Content-Length")
+		log.Printf("Proxying download: Status=%d, Content-Length=%s", resp.StatusCode, contentLength)
+		
+		// Stream the file content
+		written, err := io.Copy(c.Writer, resp.Body)
+		if err != nil {
+			log.Printf("Error streaming file: %v", err)
+		}
+		log.Printf("Streamed %d bytes to client", written)
+	})
+	
 	fileServiceGroup.Any("/v1/files/:id/share", fileServiceHandler)
 	fileServiceGroup.Any("/v1/files/:id/favorite", fileServiceHandler)
 	fileServiceGroup.Any("/v1/files/:id/restore", fileServiceHandler)
@@ -456,8 +524,13 @@ func main() {
 	// This bypasses gRPC and uses the notification service's REST endpoints
 	notificationServiceURL := os.Getenv("NOTIFICATION_SERVICE_REST_URL")
 	if notificationServiceURL == "" {
-		notificationServiceURL = "http://notification-service:8084" // Default Docker service name
+		if cfg.Environment == "development" {
+			notificationServiceURL = "http://localhost:8084"
+		} else {
+			notificationServiceURL = "http://notification-service:8084" // Default Docker service name
+		}
 	}
+	log.Printf("API Gateway - Using Notification Service URL: %s", notificationServiceURL)
 
 	router.Any("/api/v1/notifications/*path", func(c *gin.Context) {
 		// Extract user ID from JWT token
@@ -484,6 +557,9 @@ func main() {
 			userID = queryUserID
 			log.Printf("API Gateway - User ID extracted from query param: %s", userID)
 		}
+
+		// Log the final userID value
+		log.Printf("API Gateway - Final userID for notification request: '%s'", userID)
 
 		// Build target URL
 		path := c.Param("path")
@@ -513,6 +589,8 @@ func main() {
 		if userID != "" {
 			proxyReq.Header.Set("X-User-ID", userID)
 			log.Printf("API Gateway - Added X-User-ID header: %s", userID)
+		} else {
+			log.Printf("API Gateway - WARNING: userID is empty, X-User-ID header NOT added")
 		}
 
 		// Send request
@@ -527,6 +605,9 @@ func main() {
 
 		// Copy response headers
 		for key, values := range resp.Header {
+			if isCORSHeader(key) {
+				continue
+			}
 			for _, value := range values {
 				c.Header(key, value)
 			}
@@ -555,6 +636,12 @@ func main() {
 			return
 		}
 
+		// Handle OPTIONS for CORS
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+
 		// All other endpoints require auth
 		middleware.AuthMiddleware()(c)
 		if c.IsAborted() {
@@ -565,6 +652,12 @@ func main() {
 
 	// Mount file service private folder endpoints - proxy directly to file service
 	router.Any("/api/v1/files/private-folder/*path", func(c *gin.Context) {
+		// Handle OPTIONS for CORS
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+
 		// All private folder endpoints require auth
 		middleware.AuthMiddleware()(c)
 		if c.IsAborted() {
@@ -687,4 +780,10 @@ func versionsHandler(c *gin.Context) {
 			"notifications": "/api/v1/notifications",
 		},
 	})
+}
+
+// isCORSHeader checks if a header is related to CORS
+func isCORSHeader(key string) bool {
+	k := strings.ToLower(key)
+	return strings.HasPrefix(k, "access-control-")
 }

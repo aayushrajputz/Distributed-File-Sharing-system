@@ -17,6 +17,7 @@ type BillingService struct {
 	subscriptionRepo *repository.SubscriptionRepository
 	usageRepo        *repository.UsageRepository
 	stripeService    *payment.StripeService
+	razorpayService  *payment.RazorpayService
 }
 
 func NewBillingService(
@@ -24,12 +25,14 @@ func NewBillingService(
 	subscriptionRepo *repository.SubscriptionRepository,
 	usageRepo *repository.UsageRepository,
 	stripeService *payment.StripeService,
+	razorpayService *payment.RazorpayService,
 ) *BillingService {
 	return &BillingService{
 		planRepo:         planRepo,
 		subscriptionRepo: subscriptionRepo,
 		usageRepo:        usageRepo,
 		stripeService:    stripeService,
+		razorpayService:  razorpayService,
 	}
 }
 
@@ -149,8 +152,16 @@ func (s *BillingService) CreateSubscription(ctx context.Context, userID, planID,
 		}
 
 	case "razorpay":
-		// TODO: Implement Razorpay integration
-		return nil, "", "", fmt.Errorf("Razorpay not implemented yet")
+		paymentURL, sessionID, err = s.razorpayService.CreateSubscription(plan, userID, subscription.ID.Hex())
+		if err != nil {
+			return nil, "", "", fmt.Errorf("failed to create Razorpay order: %w", err)
+		}
+
+		// Update subscription with session ID (Order ID for Razorpay)
+		subscription.SessionID = sessionID
+		if err := s.subscriptionRepo.Update(ctx, subscription); err != nil {
+			logrus.WithError(err).Error("Failed to update subscription with session ID")
+		}
 
 	default:
 		return nil, "", "", fmt.Errorf("unsupported payment method: %s", paymentMethod)
@@ -328,12 +339,28 @@ func (s *BillingService) UpdateUsage(ctx context.Context, userID string, bytesDe
 }
 
 // HandlePaymentWebhook processes payment webhook events
-func (s *BillingService) HandlePaymentWebhook(ctx context.Context, provider, eventType, sessionID, transactionID string) error {
+func (s *BillingService) HandlePaymentWebhook(ctx context.Context, provider, eventType, sessionID, transactionID string, rawPayload []byte) error {
 	switch provider {
 	case "stripe":
 		return s.handleStripeWebhook(ctx, eventType, sessionID, transactionID)
 	case "razorpay":
-		return fmt.Errorf("Razorpay webhooks not implemented yet")
+		result, err := s.razorpayService.HandleWebhookEvent(rawPayload)
+		if err != nil {
+			return fmt.Errorf("failed to handle razorpay webhook: %w", err)
+		}
+		
+		if !result.Processed {
+			return nil // Event ignored
+		}
+		
+		data := result.Data.(*payment.CheckoutSessionData)
+		// Use data to update subscription
+		// Note: Razorpay might not send subscription ID in all events, so we might need to look it up via Order ID (which we stored as SessionID)
+		// But our implementation puts it in notes.
+		
+		return s.handleStripeWebhook(ctx, "checkout.session.completed", data.SubscriptionID, data.TransactionID) 
+		// Reusing handleStripeWebhook logic for now as it just updates subscription status. 
+		// Ideally rename handleStripeWebhook to handleSubscriptionUpdate or similar.
 	default:
 		return fmt.Errorf("unsupported payment provider: %s", provider)
 	}

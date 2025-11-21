@@ -20,10 +20,13 @@ type Config struct {
 	StripeSecretKey      string
 	StripePublishableKey string
 	StripeWebhookSecret  string
-
-	// Razorpay (optional)
+	
+	// Razorpay
 	RazorpayKeyID     string
 	RazorpayKeySecret string
+	RazorpayWebhookSecret string
+
+
 
 	// Service URLs
 	FileServiceGRPC string
@@ -44,6 +47,7 @@ func Load() *Config {
 		StripeWebhookSecret:  getEnv("STRIPE_WEBHOOK_SECRET", ""),
 		RazorpayKeyID:        getEnv("RAZORPAY_KEY_ID", ""),
 		RazorpayKeySecret:    getEnv("RAZORPAY_KEY_SECRET", ""),
+		RazorpayWebhookSecret: getEnv("RAZORPAY_WEBHOOK_SECRET", ""),
 		FileServiceGRPC:      getEnv("FILE_SERVICE_GRPC", "file-service:50052"),
 		Environment:          getEnv("ENVIRONMENT", "development"),
 		LogLevel:             getEnv("LOG_LEVEL", "info"),

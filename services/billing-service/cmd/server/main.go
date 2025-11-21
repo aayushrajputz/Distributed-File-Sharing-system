@@ -16,7 +16,9 @@ import (
 	"github.com/yourusername/distributed-file-sharing-platform/services/billing-service/internal/config"
 	"github.com/yourusername/distributed-file-sharing-platform/services/billing-service/internal/database"
 	grpcHandler "github.com/yourusername/distributed-file-sharing-platform/services/billing-service/internal/grpc"
+	"github.com/yourusername/distributed-file-sharing-platform/services/billing-service/internal/payment"
 	"github.com/yourusername/distributed-file-sharing-platform/services/billing-service/internal/repository"
+	"github.com/yourusername/distributed-file-sharing-platform/services/billing-service/internal/service"
 	billingv1 "github.com/yourusername/distributed-file-sharing-platform/services/billing-service/pkg/pb/billing/v1"
 )
 
@@ -40,8 +42,25 @@ func main() {
 	subscriptionRepo := repository.NewSubscriptionRepository(db.Database)
 	usageRepo := repository.NewUsageRepository(db.Database)
 
+	// Initialize payment services
+	stripeService := payment.NewStripeService(
+		cfg.StripeSecretKey,
+		cfg.StripeWebhookSecret,
+		"http://localhost:3000/billing/success", // TODO: Make configurable
+		"http://localhost:3000/billing/cancel",
+	)
+
+	razorpayService := payment.NewRazorpayService(
+		cfg.RazorpayKeyID,
+		cfg.RazorpayKeySecret,
+		cfg.RazorpayWebhookSecret,
+	)
+
+	// Initialize service layer
+	billingService := service.NewBillingService(planRepo, subscriptionRepo, usageRepo, stripeService, razorpayService)
+
 	// Initialize gRPC handler
-	grpcHandler := grpcHandler.NewBillingHandler(planRepo, subscriptionRepo, usageRepo)
+	grpcHandler := grpcHandler.NewBillingHandler(billingService)
 
 	// Start gRPC server
 	go startGRPCServer(cfg, grpcHandler, log)

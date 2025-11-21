@@ -9,7 +9,7 @@ import (
 
 	"github.com/yourusername/distributed-file-sharing/services/file-service/internal/models"
 	"github.com/yourusername/distributed-file-sharing/services/file-service/internal/service"
-	filev1 "github.com/yourusername/distributed-file-sharing/services/file-service/pkg/pb/github.com/yourusername/distributed-file-sharing/proto/file/v1"
+	filev1 "github.com/yourusername/distributed-file-sharing/services/file-service/pkg/pb/file/v1"
 )
 
 // PrivateFolderHandler handles private folder gRPC requests

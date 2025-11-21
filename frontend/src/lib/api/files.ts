@@ -197,7 +197,7 @@ export const fileService = {
     // For now, we'll get all favorites and check which ones match
     // This could be optimized with a dedicated endpoint later
     try {
-      const response = await this.listFavorites(1, 1000); // Get all favorites
+      const response = await this.listFavorites(1, 100); // Get all favorites (capped at 100)
       const favoriteFileIds = new Set(response.files.map(f => f.file_id));
 
       const result: { [fileId: string]: boolean } = {};

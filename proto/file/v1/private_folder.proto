@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package file.v1;
 
-option go_package = "github.com/yourusername/distributed-file-sharing/proto/file/v1";
+option go_package = "github.com/yourusername/distributed-file-sharing/proto/file/v1;filev1";
 
 // Private Folder Service for PIN-protected file access
 service PrivateFolderService {

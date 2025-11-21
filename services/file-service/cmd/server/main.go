@@ -351,6 +351,101 @@ func startGRPCGateway(cfg *config.Config, log *logrus.Logger, redisCache *cache.
 	privateFolderHandlers := rest.NewPrivateFolderHandlers(privateFolderService, log)
 	privateFolderHandlers.RegisterRoutes(apiV1)
 
+	// File download endpoint - streams file content directly
+	router.GET("/api/v1/files/:id/download", func(c *gin.Context) {
+		fileID := c.Param("id")
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
+			return
+		}
+
+		token := authHeader
+		if len(token) > 7 && token[:7] == "Bearer " {
+			token = token[7:]
+		}
+
+		jwtValidator := jwt.NewJWTValidator(cfg.JWTSecret)
+		userID, err := jwtValidator.ExtractUserID(token)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			return
+		}
+
+		// Get file metadata
+		file, err := fileRepo.FindByID(c.Request.Context(), fileID)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+			return
+		}
+
+		// Check download permission
+		hasPermission, err := fileRepo.CheckDownloadPermission(c.Request.Context(), fileID, userID)
+		if err != nil {
+			log.WithError(err).Error("Failed to check download permission")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check permissions"})
+			return
+		}
+
+		if !hasPermission {
+			c.JSON(http.StatusForbidden, gin.H{"error": "You don't have permission to download this file"})
+			return
+		}
+
+		// Check if MinIO storage is available
+		if minioStorage == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Storage service is temporarily unavailable"})
+			return
+		}
+
+		// Get file from MinIO
+		minioStorageTyped, ok := minioStorage.(*storage.MinioStorage)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Storage service error"})
+			return
+		}
+
+		object, err := minioStorageTyped.GetObject(c.Request.Context(), file.StoragePath)
+		if err != nil {
+			log.WithError(err).Error("Failed to get object from MinIO")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve file"})
+			return
+		}
+		defer object.Close()
+
+		// Verify object exists and get stats
+		stat, err := object.Stat()
+		if err != nil {
+			log.WithError(err).WithField("storage_path", file.StoragePath).Error("Failed to stat object in MinIO - File might be missing")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "File content not found in storage"})
+			return
+		}
+
+		log.WithFields(logrus.Fields{
+			"file_id": fileID,
+			"storage_path": file.StoragePath,
+			"db_size": file.Size,
+			"minio_size": stat.Size,
+			"content_type": stat.ContentType,
+		}).Info("Starting file download stream")
+
+		// Set response headers for file download
+		c.Header("Content-Description", "File Transfer")
+		c.Header("Content-Transfer-Encoding", "binary")
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", file.Name))
+		c.Header("Content-Type", file.MimeType)
+		c.Header("Content-Length", fmt.Sprintf("%d", stat.Size)) // Use actual size from MinIO
+
+		// Stream file content to response
+		c.DataFromReader(http.StatusOK, stat.Size, file.MimeType, object, nil)
+
+		log.WithFields(logrus.Fields{
+			"file_id": fileID,
+			"user_id": userID,
+			"file_name": file.Name,
+		}).Info("File download stream initiated")
+	})
+
 	// Privacy endpoints
 	router.PATCH("/v1/files/:id/privacy", func(c *gin.Context) {
 		fileID := c.Param("id")
