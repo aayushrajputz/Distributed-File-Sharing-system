@@ -610,7 +610,7 @@ func startGRPCGateway(cfg *config.Config, log *logrus.Logger, redisCache *cache.
 	httpServer.Addr = httpAddr
 	httpServer.Handler = router
 	httpServer.ReadTimeout = 15 * time.Second
-	httpServer.WriteTimeout = 15 * time.Second
+	httpServer.WriteTimeout = 300 * time.Second // 5 minutes for large file downloads
 	httpServer.IdleTimeout = 60 * time.Second
 
 	return httpServer.ListenAndServe()
